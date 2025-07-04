@@ -392,15 +392,15 @@ const WBSGenerator = () => {
       let equipmentPatterns = [];
       switch (number) {
         case '01': equipmentPatterns = ['Test', 'Panel Shop', 'Pad']; break;
-        case '02': equipmentPatterns = ['+UH', 'UH', '-F', 'F', 'MP', 'P', 'CT', 'VT', 'MR', 'HMI', 'KF', 'Y']; break;
+        case '02': equipmentPatterns = ['+UH', 'UH']; break; // Only parent +UH panels, children (-F, -KF, -Y, -P) will be nested under them
         case '03': equipmentPatterns = ['+WA', 'WA', 'H', 'D', 'CB', 'GCB', 'SA', 'LSW']; break;
         case '04': equipmentPatterns = ['+WC', 'WC', 'MCC', 'DOL', 'VFD', 'ATS', 'MTS', 'Q', 'K']; break;
         case '05': equipmentPatterns = ['T', 'NET', 'TA', 'NER']; break;
-        case '06': equipmentPatterns = ['+GB', 'GB', 'BCR', 'BAN', 'UPS']; break;
+        case '06': equipmentPatterns = ['+GB', 'GB', 'BAN']; break; // +GB battery systems, removed BCR and UPS (they go to category 10)
         case '07': equipmentPatterns = ['E', 'EB', 'EEP', 'MEB']; break;
         case '08': equipmentPatterns = ['+HN', 'HN', 'PC', 'FM', 'FIP', 'LT', 'LTP', 'LCT', 'GPO', 'VDO', 'ACS', 'ACR', 'CTV', 'HRN', 'EHT', 'HTP', 'MCP', 'DET', 'ASD', 'IND', 'BEA']; break;
         case '09': equipmentPatterns = ['Interface', 'Testing']; break;
-        case '10': equipmentPatterns = ['+CA', 'CA', 'PSU', 'UPS', 'ATS', 'G', 'BSG', 'GTG', 'GT', 'GC', 'WTG', 'SVC', 'HFT', 'RA', 'R', 'FC', 'CP', 'LCS', 'IOP', 'ITP', 'IJB', 'CPU', 'X', 'XB', 'XD']; break;
+        case '10': equipmentPatterns = ['+CA', 'CA', 'PSU', 'UPS', 'BCR', 'G', 'BSG', 'GTG', 'GT', 'GC', 'WTG', 'SVC', 'HFT', 'RA', 'R', 'FC', 'CP', 'LCS', 'IOP', 'ITP', 'IJB', 'CPU', 'X', 'XB', 'XD']; break; // Added BCR and UPS here
       }
 
       if (equipmentPatterns.length > 0) {
@@ -418,15 +418,15 @@ const WBSGenerator = () => {
         if (number === '99') {
           const allOtherPatterns = [
             'Test', 'Panel Shop', 'Pad',
-            '+UH', 'UH', '-F', 'F', 'MP', 'P', 'CT', 'VT', 'MR', 'HMI', 'KF', 'Y',
+            '+UH', 'UH', // Only parent +UH panels for category 02
             '+WA', 'WA', 'H', 'D', 'CB', 'GCB', 'SA', 'LSW',
             '+WC', 'WC', 'MCC', 'DOL', 'VFD', 'ATS', 'MTS', 'Q', 'K',
             'T', 'NET', 'TA', 'NER',
-            '+GB', 'GB', 'BCR', 'BAN', 'UPS',
+            '+GB', 'GB', 'BAN', // Battery systems (without BCR and UPS)
             'E', 'EB', 'EEP', 'MEB',
             '+HN', 'HN', 'PC', 'FM', 'FIP', 'LT', 'LTP', 'LCT', 'GPO', 'VDO', 'ACS', 'ACR', 'CTV', 'HRN', 'EHT', 'HTP', 'MCP', 'DET', 'ASD', 'IND', 'BEA',
             'Interface', 'Testing',
-            '+CA', 'CA', 'PSU', 'UPS', 'ATS', 'G', 'BSG', 'GTG', 'GT', 'GC', 'WTG', 'SVC', 'HFT', 'RA', 'R', 'FC', 'CP', 'LCS', 'IOP', 'ITP', 'IJB', 'CPU', 'X', 'XB', 'XD'
+            '+CA', 'CA', 'PSU', 'UPS', 'BCR', 'G', 'BSG', 'GTG', 'GT', 'GC', 'WTG', 'SVC', 'HFT', 'RA', 'R', 'FC', 'CP', 'LCS', 'IOP', 'ITP', 'IJB', 'CPU', 'X', 'XB', 'XD'
           ];
 
           const unrecognisedEquipment = data.filter(item => 
