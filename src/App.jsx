@@ -291,12 +291,53 @@ const WBSGenerator = () => {
       wbs_name: "P | Pre-requisites"
     });
 
-    // Process subsystems
-    const subsystems = [...new Set(data.filter(item => item.commissioning === 'Y').map(item => item.subsystem))];
+    // Process subsystems with Z-code ordering
+    const rawSubsystems = [...new Set(data.filter(item => item.commissioning === 'Y').map(item => item.subsystem))];
+    
+    // Function to extract Z-code from subsystem name and format it properly
+    const formatSubsystemName = (subsystem) => {
+      // Look for Z pattern in the subsystem name
+      const zMatch = subsystem.match(/Z\d+/i);
+      if (zMatch) {
+        const zCode = zMatch[0].toUpperCase();
+        // Remove the Z code from the original name and clean it up
+        const cleanName = subsystem.replace(/[-\s]*Z\d+[-\s]*/i, '').trim();
+        return `+${zCode} - ${cleanName}`;
+      }
+      return subsystem; // Return as-is if no Z pattern found
+    };
+    
+    // Sort subsystems by Z-code with Substation always last
+    const subsystems = rawSubsystems.sort((a, b) => {
+      const aFormatted = formatSubsystemName(a);
+      const bFormatted = formatSubsystemName(b);
+      
+      // Check if either is a substation (always goes last)
+      const aIsSubstation = a.toLowerCase().includes('substation');
+      const bIsSubstation = b.toLowerCase().includes('substation');
+      
+      if (aIsSubstation && !bIsSubstation) return 1;
+      if (!aIsSubstation && bIsSubstation) return -1;
+      if (aIsSubstation && bIsSubstation) return 0;
+      
+      // Extract Z numbers for comparison
+      const aZMatch = aFormatted.match(/Z(\d+)/);
+      const bZMatch = bFormatted.match(/Z(\d+)/);
+      
+      if (aZMatch && bZMatch) {
+        const aZNum = parseInt(aZMatch[1]);
+        const bZNum = parseInt(bZMatch[1]);
+        return aZNum - bZNum; // Sort by Z number (Z01, Z02, Z03, etc.)
+      }
+      
+      // If no Z codes, sort alphabetically
+      return aFormatted.localeCompare(bFormatted);
+    });
     
     subsystems.forEach((subsystem, index) => {
+      const formattedSubsystemName = formatSubsystemName(subsystem);
       const subsystemId = wbsCounter++;
-      const subsystemLabel = `S${index + 1} | ${subsystem}`;
+      const subsystemLabel = `S${index + 1} | ${formattedSubsystemName}`;
       
       nodes.push({
         wbs_code: subsystemId,
@@ -304,10 +345,11 @@ const WBSGenerator = () => {
         wbs_name: subsystemLabel
       });
 
+      // Add to prerequisites with formatted name
       nodes.push({
         wbs_code: wbsCounter++,
         parent_wbs_code: prerequisitesId,
-        wbs_name: subsystem
+        wbs_name: formattedSubsystemName
       });
 
       wbsCounter = generateModernStructure(nodes, subsystemId, subsystem, data, wbsCounter);
@@ -342,7 +384,7 @@ const WBSGenerator = () => {
     const newProjectState = {
       projectName,
       lastWbsCode: wbsCounter - 1,
-      subsystems,
+      subsystems: subsystems.map(formatSubsystemName),
       wbsNodes: nodes,
       timestamp: new Date().toISOString()
     };
