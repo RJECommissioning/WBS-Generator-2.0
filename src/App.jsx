@@ -439,27 +439,18 @@ const WBSGenerator = () => {
         wbs_name: `${number} | ${name}`
       });
 
-    orderedCategoryKeys.forEach(number => {
-      const name = categoryMapping[number];
-      const categoryId = wbsCounter++;
-      nodes.push({
-        wbs_code: categoryId,
-        parent_wbs_code: subsystemId,
-        wbs_name: `${number} | ${name}`
-      });
-
       let equipmentPatterns = [];
       switch (number) {
         case '01': equipmentPatterns = ['Test', 'Panel Shop', 'Pad']; break;
-        case '02': equipmentPatterns = ['+UH', 'UH']; break; // ONLY +UH panels (and their children will be nested)
-        case '03': equipmentPatterns = ['+WA', 'WA']; break; // ONLY +WA equipment (removed all others)
-        case '04': equipmentPatterns = ['+WC', 'WC']; break; // ONLY +WC equipment (removed all others)
+        case '02': equipmentPatterns = ['+UH', 'UH']; break;
+        case '03': equipmentPatterns = ['+WA', 'WA']; break;
+        case '04': equipmentPatterns = ['+WC', 'WC']; break;
         case '05': equipmentPatterns = ['T', 'NET', 'TA', 'NER']; break;
         case '06': equipmentPatterns = ['+GB', 'GB', 'BAN']; break;
-        case '07': equipmentPatterns = ['E', 'EB', 'EEP', 'MEB']; break; // Earthing equipment - special handling in filter logic
-        case '08': equipmentPatterns = ['+HN', 'HN', 'PC', 'FM', 'FIP', 'LT', 'LTP', 'LCT', 'GPO', 'VDO', 'ACS', 'ACR', 'CTV', 'HRN', 'EHT', 'HTP', 'MCP', 'DET', 'ASD', 'IND', 'BEA', 'Fire', 'ESS']; break; // Added Fire and ESS patterns
+        case '07': equipmentPatterns = ['E', 'EB', 'EEP', 'MEB']; break;
+        case '08': equipmentPatterns = ['+HN', 'HN', 'PC', 'FM', 'FIP', 'LT', 'LTP', 'LCT', 'GPO', 'VDO', 'ACS', 'ACR', 'CTV', 'HRN', 'EHT', 'HTP', 'MCP', 'DET', 'ASD', 'IND', 'BEA', 'Fire', 'ESS']; break;
         case '09': equipmentPatterns = ['Interface', 'Testing']; break;
-        case '10': equipmentPatterns = ['+CA', 'CA', 'PSU', 'UPS', 'BCR', 'G', 'BSG', 'GTG', 'GT', 'GC', 'WTG', 'SVC', 'HFT', 'RA', 'R', 'FC', 'CP', 'LCS', 'IOP', 'ITP', 'IJB', 'CPU', 'X', 'XB', 'XD', 'H', 'D', 'CB', 'GCB', 'SA', 'LSW', 'MCC', 'DOL', 'VFD', 'ATS', 'MTS', 'Q', 'K']; break; // Moved H, D, CB, GCB, SA, LSW, MCC, DOL, VFD, ATS, MTS, Q, K here
+        case '10': equipmentPatterns = ['+CA', 'CA', 'PSU', 'UPS', 'BCR', 'G', 'BSG', 'GTG', 'GT', 'GC', 'WTG', 'SVC', 'HFT', 'RA', 'R', 'FC', 'CP', 'LCS', 'IOP', 'ITP', 'IJB', 'CPU', 'X', 'XB', 'XD', 'H', 'D', 'CB', 'GCB', 'SA', 'LSW', 'MCC', 'DOL', 'VFD', 'ATS', 'MTS', 'Q', 'K']; break;
       }
 
       if (equipmentPatterns.length > 0) {
@@ -468,27 +459,22 @@ const WBSGenerator = () => {
           item.commissioning === 'Y' && 
           (equipmentPatterns.length === 0 || 
            equipmentPatterns.some(pattern => {
-             // More precise matching to avoid overlaps
              const equipmentUpper = item.equipmentNumber.toUpperCase();
              const patternUpper = pattern.toUpperCase();
              
              // Special handling for earthing equipment (category 07)
              if (number === '07') {
-               // For earthing, match E, EB, EEP only when followed by numbers
                if (pattern === 'E' && equipmentUpper.startsWith('E') && 
                    !equipmentUpper.startsWith('+') && !equipmentUpper.startsWith('EB') && 
                    !equipmentUpper.startsWith('EEP') && !equipmentUpper.startsWith('ESS')) {
-                 // Check if character after E is a number
                  const charAfterE = equipmentUpper.charAt(1);
                  return charAfterE >= '0' && charAfterE <= '9';
                }
                if (pattern === 'EB' && equipmentUpper.startsWith('EB')) {
-                 // Check if character after EB is a number
                  const charAfterEB = equipmentUpper.charAt(2);
                  return charAfterEB >= '0' && charAfterEB <= '9';
                }
                if (pattern === 'EEP' && equipmentUpper.startsWith('EEP')) {
-                 // Check if character after EEP is a number
                  const charAfterEEP = equipmentUpper.charAt(3);
                  return charAfterEEP >= '0' && charAfterEEP <= '9';
                }
@@ -498,16 +484,13 @@ const WBSGenerator = () => {
                return false;
              }
              
-             // For main equipment prefixes (+UH, +WA, +WC, +GB, +HN, +CA), match the start
              if (pattern.startsWith('+')) {
                return equipmentUpper.startsWith(patternUpper);
              }
-             // For specific codes like 'T', etc., match the start but not if it's part of a larger prefix
              else if (pattern.length <= 3 && pattern !== 'Fire' && pattern !== 'ESS') {
                return equipmentUpper.startsWith(patternUpper) && 
-                      !equipmentUpper.startsWith('+'); // Avoid matching T in +UH, etc.
+                      !equipmentUpper.startsWith('+');
              }
-             // For longer patterns, use includes
              else {
                return equipmentUpper.includes(patternUpper) || 
                       (item.plu && item.plu.toUpperCase().includes(patternUpper));
@@ -518,12 +501,12 @@ const WBSGenerator = () => {
         if (number === '99') {
           const allOtherPatterns = [
             'Test', 'Panel Shop', 'Pad',
-            '+UH', 'UH', // Only +UH panels in category 02
-            '+WA', 'WA', // Only +WA equipment in category 03
-            '+WC', 'WC', // Only +WC equipment in category 04
+            '+UH', 'UH',
+            '+WA', 'WA',
+            '+WC', 'WC',
             'T', 'NET', 'TA', 'NER',
             '+GB', 'GB', 'BAN',
-            'E', 'EB', 'EEP', 'MEB', // Earthing equipment
+            'E', 'EB', 'EEP', 'MEB',
             '+HN', 'HN', 'PC', 'FM', 'FIP', 'LT', 'LTP', 'LCT', 'GPO', 'VDO', 'ACS', 'ACR', 'CTV', 'HRN', 'EHT', 'HTP', 'MCP', 'DET', 'ASD', 'IND', 'BEA', 'Fire', 'ESS',
             'Interface', 'Testing',
             '+CA', 'CA', 'PSU', 'UPS', 'BCR', 'G', 'BSG', 'GTG', 'GT', 'GC', 'WTG', 'SVC', 'HFT', 'RA', 'R', 'FC', 'CP', 'LCS', 'IOP', 'ITP', 'IJB', 'CPU', 'X', 'XB', 'XD', 'H', 'D', 'CB', 'GCB', 'SA', 'LSW', 'MCC', 'DOL', 'VFD', 'ATS', 'MTS', 'Q', 'K'
@@ -536,7 +519,6 @@ const WBSGenerator = () => {
               const equipmentUpper = item.equipmentNumber.toUpperCase();
               const patternUpper = pattern.toUpperCase();
               
-              // Special handling for earthing equipment patterns
               if (pattern === 'E' && equipmentUpper.startsWith('E') && 
                   !equipmentUpper.startsWith('+') && !equipmentUpper.startsWith('EB') && 
                   !equipmentUpper.startsWith('EEP') && !equipmentUpper.startsWith('ESS')) {
@@ -552,7 +534,6 @@ const WBSGenerator = () => {
                 return charAfterEEP >= '0' && charAfterEEP <= '9';
               }
               
-              // Same precise matching logic as above
               if (pattern.startsWith('+')) {
                 return equipmentUpper.startsWith(patternUpper);
               }
@@ -570,16 +551,13 @@ const WBSGenerator = () => {
           subsystemEquipment.push(...unrecognisedEquipment);
         }
 
-        // 🔧 FIX: Only add equipment as top-level items if they don't have a parent in the same category
         const parentEquipment = subsystemEquipment.filter(item => {
-          // Check if this item has a parent that's also in the same category
           const hasParentInCategory = subsystemEquipment.some(potentialParent => 
             potentialParent.equipmentNumber === item.parentEquipmentNumber
           );
-          return !hasParentInCategory; // Only include items that don't have a parent in this category
+          return !hasParentInCategory;
         });
 
-        // Add parent equipment as top-level items in the category
         parentEquipment.forEach(item => {
           const equipmentId = wbsCounter++;
           nodes.push({
@@ -588,7 +566,6 @@ const WBSGenerator = () => {
             wbs_name: `${item.equipmentNumber} - ${item.description}`
           });
 
-          // Recursively add all child equipment under this parent
           const addChildrenRecursively = (parentEquipmentNumber, parentWbsCode) => {
             const childEquipment = data.filter(child => 
               child.parentEquipmentNumber === parentEquipmentNumber && 
@@ -603,12 +580,10 @@ const WBSGenerator = () => {
                 wbs_name: `${child.equipmentNumber} - ${child.description}`
               });
               
-              // Recursively add children of this child (multi-level hierarchy)
               addChildrenRecursively(child.equipmentNumber, childId);
             });
           };
 
-          // Add all children of this parent equipment
           addChildrenRecursively(item.equipmentNumber, equipmentId);
         });
       }
@@ -622,7 +597,7 @@ const WBSGenerator = () => {
           });
         });
       }
-    }); // Close the orderedCategoryKeys.forEach loop
+    });
 
     return wbsCounter;
   };
