@@ -397,8 +397,8 @@ const WBSGenerator = () => {
         case '04': equipmentPatterns = ['+WC', 'WC']; break; // ONLY +WC equipment (removed all others)
         case '05': equipmentPatterns = ['T', 'NET', 'TA', 'NER']; break;
         case '06': equipmentPatterns = ['+GB', 'GB', 'BAN']; break;
-        case '07': equipmentPatterns = ['E', 'EB', 'EEP', 'MEB']; break;
-        case '08': equipmentPatterns = ['+HN', 'HN', 'PC', 'FM', 'FIP', 'LT', 'LTP', 'LCT', 'GPO', 'VDO', 'ACS', 'ACR', 'CTV', 'HRN', 'EHT', 'HTP', 'MCP', 'DET', 'ASD', 'IND', 'BEA']; break;
+        case '07': equipmentPatterns = ['E', 'EB', 'EEP', 'MEB']; break; // Earthing equipment - special handling in filter logic
+        case '08': equipmentPatterns = ['+HN', 'HN', 'PC', 'FM', 'FIP', 'LT', 'LTP', 'LCT', 'GPO', 'VDO', 'ACS', 'ACR', 'CTV', 'HRN', 'EHT', 'HTP', 'MCP', 'DET', 'ASD', 'IND', 'BEA', 'Fire', 'ESS']; break; // Added Fire and ESS patterns
         case '09': equipmentPatterns = ['Interface', 'Testing']; break;
         case '10': equipmentPatterns = ['+CA', 'CA', 'PSU', 'UPS', 'BCR', 'G', 'BSG', 'GTG', 'GT', 'GC', 'WTG', 'SVC', 'HFT', 'RA', 'R', 'FC', 'CP', 'LCS', 'IOP', 'ITP', 'IJB', 'CPU', 'X', 'XB', 'XD', 'H', 'D', 'CB', 'GCB', 'SA', 'LSW', 'MCC', 'DOL', 'VFD', 'ATS', 'MTS', 'Q', 'K']; break; // Moved H, D, CB, GCB, SA, LSW, MCC, DOL, VFD, ATS, MTS, Q, K here
       }
@@ -413,12 +413,38 @@ const WBSGenerator = () => {
              const equipmentUpper = item.equipmentNumber.toUpperCase();
              const patternUpper = pattern.toUpperCase();
              
+             // Special handling for earthing equipment (category 07)
+             if (number === '07') {
+               // For earthing, match E, EB, EEP only when followed by numbers
+               if (pattern === 'E' && equipmentUpper.startsWith('E') && 
+                   !equipmentUpper.startsWith('+') && !equipmentUpper.startsWith('EB') && 
+                   !equipmentUpper.startsWith('EEP') && !equipmentUpper.startsWith('ESS')) {
+                 // Check if character after E is a number
+                 const charAfterE = equipmentUpper.charAt(1);
+                 return charAfterE >= '0' && charAfterE <= '9';
+               }
+               if (pattern === 'EB' && equipmentUpper.startsWith('EB')) {
+                 // Check if character after EB is a number
+                 const charAfterEB = equipmentUpper.charAt(2);
+                 return charAfterEB >= '0' && charAfterEB <= '9';
+               }
+               if (pattern === 'EEP' && equipmentUpper.startsWith('EEP')) {
+                 // Check if character after EEP is a number
+                 const charAfterEEP = equipmentUpper.charAt(3);
+                 return charAfterEEP >= '0' && charAfterEEP <= '9';
+               }
+               if (pattern === 'MEB') {
+                 return equipmentUpper.startsWith('MEB');
+               }
+               return false;
+             }
+             
              // For main equipment prefixes (+UH, +WA, +WC, +GB, +HN, +CA), match the start
              if (pattern.startsWith('+')) {
                return equipmentUpper.startsWith(patternUpper);
              }
-             // For specific codes like 'T', 'E', etc., match the start but not if it's part of a larger prefix
-             else if (pattern.length <= 3) {
+             // For specific codes like 'T', etc., match the start but not if it's part of a larger prefix
+             else if (pattern.length <= 3 && pattern !== 'Fire' && pattern !== 'ESS') {
                return equipmentUpper.startsWith(patternUpper) && 
                       !equipmentUpper.startsWith('+'); // Avoid matching T in +UH, etc.
              }
@@ -438,8 +464,8 @@ const WBSGenerator = () => {
             '+WC', 'WC', // Only +WC equipment in category 04
             'T', 'NET', 'TA', 'NER',
             '+GB', 'GB', 'BAN',
-            'E', 'EB', 'EEP', 'MEB',
-            '+HN', 'HN', 'PC', 'FM', 'FIP', 'LT', 'LTP', 'LCT', 'GPO', 'VDO', 'ACS', 'ACR', 'CTV', 'HRN', 'EHT', 'HTP', 'MCP', 'DET', 'ASD', 'IND', 'BEA',
+            'E', 'EB', 'EEP', 'MEB', // Earthing equipment
+            '+HN', 'HN', 'PC', 'FM', 'FIP', 'LT', 'LTP', 'LCT', 'GPO', 'VDO', 'ACS', 'ACR', 'CTV', 'HRN', 'EHT', 'HTP', 'MCP', 'DET', 'ASD', 'IND', 'BEA', 'Fire', 'ESS',
             'Interface', 'Testing',
             '+CA', 'CA', 'PSU', 'UPS', 'BCR', 'G', 'BSG', 'GTG', 'GT', 'GC', 'WTG', 'SVC', 'HFT', 'RA', 'R', 'FC', 'CP', 'LCS', 'IOP', 'ITP', 'IJB', 'CPU', 'X', 'XB', 'XD', 'H', 'D', 'CB', 'GCB', 'SA', 'LSW', 'MCC', 'DOL', 'VFD', 'ATS', 'MTS', 'Q', 'K'
           ];
@@ -451,11 +477,27 @@ const WBSGenerator = () => {
               const equipmentUpper = item.equipmentNumber.toUpperCase();
               const patternUpper = pattern.toUpperCase();
               
+              // Special handling for earthing equipment patterns
+              if (pattern === 'E' && equipmentUpper.startsWith('E') && 
+                  !equipmentUpper.startsWith('+') && !equipmentUpper.startsWith('EB') && 
+                  !equipmentUpper.startsWith('EEP') && !equipmentUpper.startsWith('ESS')) {
+                const charAfterE = equipmentUpper.charAt(1);
+                return charAfterE >= '0' && charAfterE <= '9';
+              }
+              if (pattern === 'EB' && equipmentUpper.startsWith('EB')) {
+                const charAfterEB = equipmentUpper.charAt(2);
+                return charAfterEB >= '0' && charAfterEB <= '9';
+              }
+              if (pattern === 'EEP' && equipmentUpper.startsWith('EEP')) {
+                const charAfterEEP = equipmentUpper.charAt(3);
+                return charAfterEEP >= '0' && charAfterEEP <= '9';
+              }
+              
               // Same precise matching logic as above
               if (pattern.startsWith('+')) {
                 return equipmentUpper.startsWith(patternUpper);
               }
-              else if (pattern.length <= 3) {
+              else if (pattern.length <= 3 && pattern !== 'Fire' && pattern !== 'ESS') {
                 return equipmentUpper.startsWith(patternUpper) && 
                        !equipmentUpper.startsWith('+');
               }
