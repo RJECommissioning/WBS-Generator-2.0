@@ -300,8 +300,12 @@ const WBSGenerator = () => {
       const zMatch = subsystem.match(/Z\d+/i);
       if (zMatch) {
         const zCode = zMatch[0].toUpperCase();
-        // Remove the Z code from the original name and clean it up
-        const cleanName = subsystem.replace(/[-\s]*Z\d+[-\s]*/i, '').trim();
+        // Remove the Z code and any surrounding characters (-, +, spaces) from the original name
+        let cleanName = subsystem.replace(/[-\s]*\+?Z\d+[-\s]*/i, '').trim();
+        // Remove any trailing dashes or plus signs
+        cleanName = cleanName.replace(/[-\s\+]+$/, '').trim();
+        // Remove any leading dashes or plus signs  
+        cleanName = cleanName.replace(/^[-\s\+]+/, '').trim();
         return `+${zCode} - ${cleanName}`;
       }
       return subsystem; // Return as-is if no Z pattern found
@@ -423,7 +427,20 @@ const WBSGenerator = () => {
   const generateModernStructure = (nodes, subsystemId, subsystem, data, startCounter) => {
     let wbsCounter = startCounter;
 
-    Object.entries(categoryMapping).forEach(([number, name]) => {
+    // Process categories in proper sequential order: 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 99
+    const orderedCategoryKeys = ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '99'];
+    
+    orderedCategoryKeys.forEach(number => {
+      const name = categoryMapping[number];
+      const categoryId = wbsCounter++;
+      nodes.push({
+        wbs_code: categoryId,
+        parent_wbs_code: subsystemId,
+        wbs_name: `${number} | ${name}`
+      });
+
+    orderedCategoryKeys.forEach(number => {
+      const name = categoryMapping[number];
       const categoryId = wbsCounter++;
       nodes.push({
         wbs_code: categoryId,
@@ -605,7 +622,7 @@ const WBSGenerator = () => {
           });
         });
       }
-    });
+    }); // Close the orderedCategoryKeys.forEach loop
 
     return wbsCounter;
   };
