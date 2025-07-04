@@ -392,15 +392,15 @@ const WBSGenerator = () => {
       let equipmentPatterns = [];
       switch (number) {
         case '01': equipmentPatterns = ['Test', 'Panel Shop', 'Pad']; break;
-        case '02': equipmentPatterns = ['+UH', 'UH']; break; // Only parent +UH panels, children (-F, -KF, -Y, -P) will be nested under them
-        case '03': equipmentPatterns = ['+WA', 'WA', 'H', 'D', 'CB', 'GCB', 'SA', 'LSW']; break;
-        case '04': equipmentPatterns = ['+WC', 'WC', 'MCC', 'DOL', 'VFD', 'ATS', 'MTS', 'Q', 'K']; break;
+        case '02': equipmentPatterns = ['+UH', 'UH']; break; // ONLY +UH panels (and their children will be nested)
+        case '03': equipmentPatterns = ['+WA', 'WA']; break; // ONLY +WA equipment (removed all others)
+        case '04': equipmentPatterns = ['+WC', 'WC']; break; // ONLY +WC equipment (removed all others)
         case '05': equipmentPatterns = ['T', 'NET', 'TA', 'NER']; break;
-        case '06': equipmentPatterns = ['+GB', 'GB', 'BAN']; break; // +GB battery systems, removed BCR and UPS (they go to category 10)
+        case '06': equipmentPatterns = ['+GB', 'GB', 'BAN']; break;
         case '07': equipmentPatterns = ['E', 'EB', 'EEP', 'MEB']; break;
         case '08': equipmentPatterns = ['+HN', 'HN', 'PC', 'FM', 'FIP', 'LT', 'LTP', 'LCT', 'GPO', 'VDO', 'ACS', 'ACR', 'CTV', 'HRN', 'EHT', 'HTP', 'MCP', 'DET', 'ASD', 'IND', 'BEA']; break;
         case '09': equipmentPatterns = ['Interface', 'Testing']; break;
-        case '10': equipmentPatterns = ['+CA', 'CA', 'PSU', 'UPS', 'BCR', 'G', 'BSG', 'GTG', 'GT', 'GC', 'WTG', 'SVC', 'HFT', 'RA', 'R', 'FC', 'CP', 'LCS', 'IOP', 'ITP', 'IJB', 'CPU', 'X', 'XB', 'XD']; break; // Added BCR and UPS here
+        case '10': equipmentPatterns = ['+CA', 'CA', 'PSU', 'UPS', 'BCR', 'G', 'BSG', 'GTG', 'GT', 'GC', 'WTG', 'SVC', 'HFT', 'RA', 'R', 'FC', 'CP', 'LCS', 'IOP', 'ITP', 'IJB', 'CPU', 'X', 'XB', 'XD', 'H', 'D', 'CB', 'GCB', 'SA', 'LSW', 'MCC', 'DOL', 'VFD', 'ATS', 'MTS', 'Q', 'K']; break; // Moved H, D, CB, GCB, SA, LSW, MCC, DOL, VFD, ATS, MTS, Q, K here
       }
 
       if (equipmentPatterns.length > 0) {
@@ -408,35 +408,62 @@ const WBSGenerator = () => {
           item.subsystem === subsystem && 
           item.commissioning === 'Y' && 
           (equipmentPatterns.length === 0 || 
-           equipmentPatterns.some(pattern => 
-             item.equipmentNumber.toUpperCase().startsWith(pattern.toUpperCase()) ||
-             item.equipmentNumber.toUpperCase().includes(pattern.toUpperCase()) ||
-             (item.plu && item.plu.toUpperCase().includes(pattern.toUpperCase()))
-           ))
+           equipmentPatterns.some(pattern => {
+             // More precise matching to avoid overlaps
+             const equipmentUpper = item.equipmentNumber.toUpperCase();
+             const patternUpper = pattern.toUpperCase();
+             
+             // For main equipment prefixes (+UH, +WA, +WC, +GB, +HN, +CA), match the start
+             if (pattern.startsWith('+')) {
+               return equipmentUpper.startsWith(patternUpper);
+             }
+             // For specific codes like 'T', 'E', etc., match the start but not if it's part of a larger prefix
+             else if (pattern.length <= 3) {
+               return equipmentUpper.startsWith(patternUpper) && 
+                      !equipmentUpper.startsWith('+'); // Avoid matching T in +UH, etc.
+             }
+             // For longer patterns, use includes
+             else {
+               return equipmentUpper.includes(patternUpper) || 
+                      (item.plu && item.plu.toUpperCase().includes(patternUpper));
+             }
+           }))
         );
 
         if (number === '99') {
           const allOtherPatterns = [
             'Test', 'Panel Shop', 'Pad',
-            '+UH', 'UH', // Only parent +UH panels for category 02
-            '+WA', 'WA', 'H', 'D', 'CB', 'GCB', 'SA', 'LSW',
-            '+WC', 'WC', 'MCC', 'DOL', 'VFD', 'ATS', 'MTS', 'Q', 'K',
+            '+UH', 'UH', // Only +UH panels in category 02
+            '+WA', 'WA', // Only +WA equipment in category 03
+            '+WC', 'WC', // Only +WC equipment in category 04
             'T', 'NET', 'TA', 'NER',
-            '+GB', 'GB', 'BAN', // Battery systems (without BCR and UPS)
+            '+GB', 'GB', 'BAN',
             'E', 'EB', 'EEP', 'MEB',
             '+HN', 'HN', 'PC', 'FM', 'FIP', 'LT', 'LTP', 'LCT', 'GPO', 'VDO', 'ACS', 'ACR', 'CTV', 'HRN', 'EHT', 'HTP', 'MCP', 'DET', 'ASD', 'IND', 'BEA',
             'Interface', 'Testing',
-            '+CA', 'CA', 'PSU', 'UPS', 'BCR', 'G', 'BSG', 'GTG', 'GT', 'GC', 'WTG', 'SVC', 'HFT', 'RA', 'R', 'FC', 'CP', 'LCS', 'IOP', 'ITP', 'IJB', 'CPU', 'X', 'XB', 'XD'
+            '+CA', 'CA', 'PSU', 'UPS', 'BCR', 'G', 'BSG', 'GTG', 'GT', 'GC', 'WTG', 'SVC', 'HFT', 'RA', 'R', 'FC', 'CP', 'LCS', 'IOP', 'ITP', 'IJB', 'CPU', 'X', 'XB', 'XD', 'H', 'D', 'CB', 'GCB', 'SA', 'LSW', 'MCC', 'DOL', 'VFD', 'ATS', 'MTS', 'Q', 'K'
           ];
 
           const unrecognisedEquipment = data.filter(item => 
             item.subsystem === subsystem && 
             item.commissioning === 'Y' && 
-            !allOtherPatterns.some(pattern => 
-              item.equipmentNumber.toUpperCase().startsWith(pattern.toUpperCase()) ||
-              item.equipmentNumber.toUpperCase().includes(pattern.toUpperCase()) ||
-              (item.plu && item.plu.toUpperCase().includes(pattern.toUpperCase()))
-            )
+            !allOtherPatterns.some(pattern => {
+              const equipmentUpper = item.equipmentNumber.toUpperCase();
+              const patternUpper = pattern.toUpperCase();
+              
+              // Same precise matching logic as above
+              if (pattern.startsWith('+')) {
+                return equipmentUpper.startsWith(patternUpper);
+              }
+              else if (pattern.length <= 3) {
+                return equipmentUpper.startsWith(patternUpper) && 
+                       !equipmentUpper.startsWith('+');
+              }
+              else {
+                return equipmentUpper.includes(patternUpper) || 
+                       (item.plu && item.plu.toUpperCase().includes(patternUpper));
+              }
+            })
           );
 
           subsystemEquipment.push(...unrecognisedEquipment);
