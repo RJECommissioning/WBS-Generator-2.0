@@ -655,13 +655,13 @@ const WBSGenerator = () => {
     if (wbsOutput.length === 0) return;
 
     const csvContent = [
-      'wbs_code\tparent_wbs_code\twbs_name',
+      'wbs_code,parent_wbs_code,wbs_name',
       ...wbsOutput.map(node => 
-        `${node.wbs_code}\t${node.parent_wbs_code || ''}\t${node.wbs_name}`
+        `"${node.wbs_code}","${node.parent_wbs_code || ''}","${node.wbs_name}"`
       )
     ].join('\n');
 
-    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     
     const link = document.createElement('a');
