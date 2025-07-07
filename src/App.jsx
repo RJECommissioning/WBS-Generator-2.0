@@ -193,7 +193,7 @@ const WBSGenerator = () => {
     try {
       let wbsData = [];
       let projectName = 'Continued Project';
-      let lastWbsCode = 1000;
+      let lastWbsCode = 3;
       let subsystems = [];
 
       if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
@@ -209,8 +209,8 @@ const WBSGenerator = () => {
         const dataRows = jsonData.slice(1);
         
         wbsData = dataRows.map(row => ({
-          wbs_code: parseInt(row[0]) || 0,
-          parent_wbs_code: row[1] ? parseInt(row[1]) : null,
+          wbs_code: row[0]?.toString() || '',
+          parent_wbs_code: row[1] ? row[1].toString() : null,
           wbs_name: row[2] || ''
         })).filter(item => item.wbs_code && item.wbs_name);
         
@@ -223,8 +223,8 @@ const WBSGenerator = () => {
         wbsData = lines.slice(1).map(line => {
           const values = line.split(delimiter).map(v => v.trim().replace(/"/g, ''));
           return {
-            wbs_code: parseInt(values[0]) || 0,
-            parent_wbs_code: values[1] ? parseInt(values[1]) : null,
+            wbs_code: values[0] || '',
+            parent_wbs_code: values[1] || null,
             wbs_name: values[2] || ''
           };
         }).filter(item => item.wbs_code && item.wbs_name);
@@ -237,7 +237,19 @@ const WBSGenerator = () => {
         projectName = rootNode.wbs_name;
       }
 
-      lastWbsCode = Math.max(...wbsData.map(node => node.wbs_code));
+      // Find the highest subsystem number to continue from
+      const subsystemNodes = wbsData.filter(node => 
+        node.wbs_code.startsWith('1.') && 
+        node.wbs_code.split('.').length === 2 &&
+        node.wbs_name.startsWith('S')
+      );
+      
+      if (subsystemNodes.length > 0) {
+        const subsystemNumbers = subsystemNodes.map(node => 
+          parseInt(node.wbs_code.split('.')[1])
+        );
+        lastWbsCode = Math.max(...subsystemNumbers) + 1;
+      }
 
       subsystems = wbsData
         .filter(node => node.wbs_name.startsWith('S') && node.wbs_name.includes('|'))
@@ -264,19 +276,19 @@ const WBSGenerator = () => {
 
   const generateWBS = (data) => {
     const nodes = [];
-    let wbsCounter = projectState?.lastWbsCode ? projectState.lastWbsCode + 1 : 1000;
+    let subsystemCounter = projectState?.lastWbsCode ? projectState.lastWbsCode : 3; // Start subsystems at 1.3 or continue from existing
+    let tbcCounter = 1;
 
     // Project root
+    const projectId = "1";
     nodes.push({
-      wbs_code: wbsCounter++,
+      wbs_code: projectId,
       parent_wbs_code: null,
       wbs_name: projectName
     });
 
-    const projectId = wbsCounter - 1;
-
     // M | Milestones
-    const milestonesId = wbsCounter++;
+    const milestonesId = "1.1";
     nodes.push({
       wbs_code: milestonesId,
       parent_wbs_code: projectId,
@@ -284,7 +296,7 @@ const WBSGenerator = () => {
     });
 
     // P | Pre-requisites
-    const prerequisitesId = wbsCounter++;
+    const prerequisitesId = "1.2";
     nodes.push({
       wbs_code: prerequisitesId,
       parent_wbs_code: projectId,
@@ -340,7 +352,7 @@ const WBSGenerator = () => {
     
     subsystems.forEach((subsystem, index) => {
       const formattedSubsystemName = formatSubsystemName(subsystem);
-      const subsystemId = wbsCounter++;
+      const subsystemId = `1.${subsystemCounter}`;
       const subsystemLabel = `S${index + 1} | ${formattedSubsystemName}`;
       
       nodes.push({
@@ -350,19 +362,21 @@ const WBSGenerator = () => {
       });
 
       // Add to prerequisites with formatted name
+      const prerequisiteId = `1.2.${index + 1}`;
       nodes.push({
-        wbs_code: wbsCounter++,
+        wbs_code: prerequisiteId,
         parent_wbs_code: prerequisitesId,
         wbs_name: formattedSubsystemName
       });
 
-      wbsCounter = generateModernStructure(nodes, subsystemId, subsystem, data, wbsCounter);
+      generateModernStructure(nodes, subsystemId, subsystem, data);
+      subsystemCounter++;
     });
 
     // Handle TBC equipment
     const tbcEquipment = data.filter(item => item.commissioning === 'TBC');
     if (tbcEquipment.length > 0) {
-      const tbcId = wbsCounter++;
+      const tbcId = `1.${subsystemCounter}`;
       nodes.push({
         wbs_code: tbcId,
         parent_wbs_code: projectId,
@@ -371,10 +385,11 @@ const WBSGenerator = () => {
 
       tbcEquipment.forEach(item => {
         nodes.push({
-          wbs_code: wbsCounter++,
+          wbs_code: `${tbcId}.${tbcCounter}`,
           parent_wbs_code: tbcId,
           wbs_name: `${item.equipmentNumber} | ${item.description}`
         });
+        tbcCounter++;
       });
     }
 
@@ -387,7 +402,7 @@ const WBSGenerator = () => {
     
     const newProjectState = {
       projectName,
-      lastWbsCode: wbsCounter - 1,
+      lastWbsCode: subsystemCounter,
       subsystems: subsystems.map(formatSubsystemName),
       wbsNodes: nodes,
       timestamp: new Date().toISOString()
@@ -397,16 +412,6 @@ const WBSGenerator = () => {
   };
 
   const validateP6Structure = (nodes) => {
-    const codes = nodes.map(n => n.wbs_code).sort((a, b) => a - b);
-    const startCode = codes[0];
-    
-    for (let i = 0; i < codes.length; i++) {
-      if (codes[i] !== startCode + i) {
-        console.warn(`P6 Warning: Non-sequential WBS code found: ${codes[i]}, expected: ${startCode + i}`);
-        return false;
-      }
-    }
-
     const rootNodes = nodes.filter(n => n.parent_wbs_code === null);
     if (rootNodes.length !== 1) {
       console.warn(`P6 Warning: Expected 1 root node, found: ${rootNodes.length}`);
@@ -421,18 +426,29 @@ const WBSGenerator = () => {
       }
     }
 
+    // Check hierarchical structure
+    for (const node of nodes) {
+      if (node.parent_wbs_code !== null) {
+        const parentNode = nodes.find(n => n.wbs_code === node.parent_wbs_code);
+        if (!parentNode) {
+          console.warn(`P6 Warning: Parent node ${node.parent_wbs_code} not found for ${node.wbs_code}`);
+          return false;
+        }
+      }
+    }
+
     return true;
   };
 
-  const generateModernStructure = (nodes, subsystemId, subsystem, data, startCounter) => {
-    let wbsCounter = startCounter;
-
+  const generateModernStructure = (nodes, subsystemId, subsystem, data) => {
+    let categoryCounter = 1;
+    
     // Process categories in proper sequential order: 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 99
     const orderedCategoryKeys = ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '99'];
     
     orderedCategoryKeys.forEach(number => {
       const name = categoryMapping[number];
-      const categoryId = wbsCounter++;
+      const categoryId = `${subsystemId}.${categoryCounter}`;
       nodes.push({
         wbs_code: categoryId,
         parent_wbs_code: subsystemId,
@@ -441,12 +457,14 @@ const WBSGenerator = () => {
 
       // Special handling for 01 | Preparations and set-up - always create these 3 items
       if (number === '01') {
+        let prepCounter = 1;
         ['Test bay', 'Panel Shop', 'Pad'].forEach(item => {
           nodes.push({
-            wbs_code: wbsCounter++,
+            wbs_code: `${categoryId}.${prepCounter}`,
             parent_wbs_code: categoryId,
             wbs_name: item
           });
+          prepCounter++;
         });
       }
 
@@ -568,8 +586,9 @@ const WBSGenerator = () => {
           return !hasParentInCategory;
         });
 
+        let equipmentCounter = 1;
         parentEquipment.forEach(item => {
-          const equipmentId = wbsCounter++;
+          const equipmentId = `${categoryId}.${equipmentCounter}`;
           nodes.push({
             wbs_code: equipmentId,
             parent_wbs_code: categoryId,
@@ -582,8 +601,9 @@ const WBSGenerator = () => {
               child.commissioning === 'Y'
             );
             
+            let childCounter = 1;
             childEquipment.forEach(child => {
-              const childId = wbsCounter++;
+              const childId = `${parentWbsCode}.${childCounter}`;
               nodes.push({
                 wbs_code: childId,
                 parent_wbs_code: parentWbsCode,
@@ -591,25 +611,29 @@ const WBSGenerator = () => {
               });
               
               addChildrenRecursively(child.equipmentNumber, childId);
+              childCounter++;
             });
           };
 
           addChildrenRecursively(item.equipmentNumber, equipmentId);
+          equipmentCounter++;
         });
       }
 
       if (number === '09') {
+        let phaseCounter = 1;
         ['Phase 1', 'Phase 2'].forEach(phase => {
           nodes.push({
-            wbs_code: wbsCounter++,
+            wbs_code: `${categoryId}.${phaseCounter}`,
             parent_wbs_code: categoryId,
             wbs_name: phase
           });
+          phaseCounter++;
         });
       }
-    });
 
-    return wbsCounter;
+      categoryCounter++;
+    });
   };
 
   const exportProjectState = () => {
@@ -968,7 +992,7 @@ const WBSGenerator = () => {
             <div className="mb-4 p-3 rounded-lg" style={{ backgroundColor: rjeColors.lightGreen + '15' }}>
               <p className="text-sm text-gray-700">
                 <strong>💡 P6 Import Ready:</strong> Use the <strong>WBS CSV export</strong> for Primavera P6 import or to continue this project later. 
-                The CSV file uses tab-separated format optimized for P6 compatibility with sequential numbering.
+                The CSV file uses tab-separated format optimized for P6 compatibility with hierarchical decimal numbering.
               </p>
             </div>
 
@@ -1011,7 +1035,7 @@ const WBSGenerator = () => {
                   WBS Structure Preview (P6 Format)
                 </h4>
                 <span className="text-xs text-gray-500">
-                  Sequential: {wbsOutput[0]?.wbs_code} - {wbsOutput[wbsOutput.length - 1]?.wbs_code}
+                  Hierarchical: {wbsOutput[0]?.wbs_code} - {wbsOutput[wbsOutput.length - 1]?.wbs_code}
                 </span>
               </div>
               <div className="text-sm font-mono">
