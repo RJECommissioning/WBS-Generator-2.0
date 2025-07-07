@@ -306,7 +306,7 @@ const WBSGenerator = () => {
         cleanName = cleanName.replace(/[-\s\+]+$/, '').trim();
         // Remove any leading dashes or plus signs  
         cleanName = cleanName.replace(/^[-\s\+]+/, '').trim();
-        return `+${zCode} - ${cleanName}`;
+        return `+${zCode} | ${cleanName}`;
       }
       return subsystem; // Return as-is if no Z pattern found
     };
@@ -373,7 +373,7 @@ const WBSGenerator = () => {
         nodes.push({
           wbs_code: wbsCounter++,
           parent_wbs_code: tbcId,
-          wbs_name: `${item.equipmentNumber} - ${item.description}`
+          wbs_name: `${item.equipmentNumber} | ${item.description}`
         });
       });
     }
@@ -439,9 +439,20 @@ const WBSGenerator = () => {
         wbs_name: `${number} | ${name}`
       });
 
+      // Special handling for 01 | Preparations and set-up - always create these 3 items
+      if (number === '01') {
+        ['Test bay', 'Panel Shop', 'Pad'].forEach(item => {
+          nodes.push({
+            wbs_code: wbsCounter++,
+            parent_wbs_code: categoryId,
+            wbs_name: item
+          });
+        });
+      }
+
       let equipmentPatterns = [];
       switch (number) {
-        case '01': equipmentPatterns = ['Test', 'Panel Shop', 'Pad']; break;
+        case '01': equipmentPatterns = []; break; // Handled above
         case '02': equipmentPatterns = ['+UH', 'UH']; break;
         case '03': equipmentPatterns = ['+WA', 'WA']; break;
         case '04': equipmentPatterns = ['+WC', 'WC']; break;
@@ -500,7 +511,6 @@ const WBSGenerator = () => {
 
         if (number === '99') {
           const allOtherPatterns = [
-            'Test', 'Panel Shop', 'Pad',
             '+UH', 'UH',
             '+WA', 'WA',
             '+WC', 'WC',
@@ -563,7 +573,7 @@ const WBSGenerator = () => {
           nodes.push({
             wbs_code: equipmentId,
             parent_wbs_code: categoryId,
-            wbs_name: `${item.equipmentNumber} - ${item.description}`
+            wbs_name: `${item.equipmentNumber} | ${item.description}`
           });
 
           const addChildrenRecursively = (parentEquipmentNumber, parentWbsCode) => {
@@ -577,7 +587,7 @@ const WBSGenerator = () => {
               nodes.push({
                 wbs_code: childId,
                 parent_wbs_code: parentWbsCode,
-                wbs_name: `${child.equipmentNumber} - ${child.description}`
+                wbs_name: `${child.equipmentNumber} | ${child.description}`
               });
               
               addChildrenRecursively(child.equipmentNumber, childId);
@@ -1080,6 +1090,11 @@ const WBSTreeVisualization = ({ wbsNodes }) => {
     if (wbsName.includes('04 |')) return rjeColors.teal + '20';
     if (wbsName.includes('05 |')) return rjeColors.blue + '20';
     if (wbsName.includes('06 |')) return rjeColors.darkBlue + '20';
+    if (wbsName.includes('07 |')) return rjeColors.lightGreen + '25';
+    if (wbsName.includes('08 |')) return rjeColors.mediumGreen + '25';
+    if (wbsName.includes('09 |')) return rjeColors.darkGreen + '25';
+    if (wbsName.includes('10 |')) return rjeColors.teal + '25';
+    if (wbsName.includes('99 |')) return rjeColors.blue + '25';
     if (wbsName.includes('M |')) return rjeColors.mediumGreen + '30';
     if (wbsName.includes('P |')) return rjeColors.teal + '30';
     if (wbsName.includes('S') && wbsName.includes('|')) return rjeColors.darkBlue + '30';
