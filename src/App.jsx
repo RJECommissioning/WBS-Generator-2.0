@@ -306,7 +306,7 @@ const WBSGenerator = () => {
         cleanName = cleanName.replace(/[-\s\+]+$/, '').trim();
         // Remove any leading dashes or plus signs  
         cleanName = cleanName.replace(/^[-\s\+]+/, '').trim();
-        return `+${zCode} | ${cleanName}`;
+        return `+${zCode} - ${cleanName}`;
       }
       return subsystem; // Return as-is if no Z pattern found
     };
