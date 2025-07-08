@@ -282,49 +282,59 @@ const WBSGenerator = () => {
     // Calculate how many subsystems already exist (for proper S-numbering)
     const existingSubsystemCount = projectState?.subsystems?.length || 0;
 
-    // If continuing a project, merge existing nodes with new ones
+    // Always create the base structure first
+    const projectId = "1";
+    nodes.push({
+      wbs_code: projectId,
+      parent_wbs_code: null,
+      wbs_name: projectName
+    });
+
+    // M | Milestones
+    const milestonesId = "1.1";
+    nodes.push({
+      wbs_code: milestonesId,
+      parent_wbs_code: projectId,
+      wbs_name: "M | Milestones"
+    });
+
+    // P | Pre-requisites
+    const prerequisitesId = "1.2";
+    nodes.push({
+      wbs_code: prerequisitesId,
+      parent_wbs_code: projectId,
+      wbs_name: "P | Pre-requisites"
+    });
+
+    // If continuing a project, add existing subsystem nodes (but not base structure)
     if (projectState?.wbsNodes && projectState.wbsNodes.length > 0) {
-      // Add existing nodes first
-      nodes.push(...projectState.wbsNodes);
-      
-      // Find existing TBC section and remove it (we'll regenerate it)
-      const tbcNodeIndex = nodes.findIndex(node => 
-        node.wbs_name === "TBC - Equipment To Be Confirmed"
+      // Add existing nodes but skip base structure (1, 1.1, 1.2) and TBC
+      const existingNodes = projectState.wbsNodes.filter(node => 
+        node.wbs_code !== "1" && 
+        node.wbs_code !== "1.1" && 
+        node.wbs_code !== "1.2" &&
+        !node.wbs_name.includes("TBC - Equipment To Be Confirmed") &&
+        !node.parent_wbs_code?.includes("TBC")
       );
-      if (tbcNodeIndex !== -1) {
-        // Remove TBC section and its children
-        const tbcCode = nodes[tbcNodeIndex].wbs_code;
-        nodes.splice(tbcNodeIndex, 1);
-        // Remove TBC children
-        for (let i = nodes.length - 1; i >= 0; i--) {
-          if (nodes[i].parent_wbs_code === tbcCode) {
-            nodes.splice(i, 1);
-          }
+      
+      // Add existing subsystem nodes
+      existingNodes.forEach(node => {
+        // Skip if this node already exists in our base structure
+        if (!nodes.some(existing => existing.wbs_code === node.wbs_code)) {
+          nodes.push(node);
         }
-      }
-    } else {
-      // New project - create base structure
-      const projectId = "1";
-      nodes.push({
-        wbs_code: projectId,
-        parent_wbs_code: null,
-        wbs_name: projectName
       });
-
-      // M | Milestones
-      const milestonesId = "1.1";
-      nodes.push({
-        wbs_code: milestonesId,
-        parent_wbs_code: projectId,
-        wbs_name: "M | Milestones"
-      });
-
-      // P | Pre-requisites
-      const prerequisitesId = "1.2";
-      nodes.push({
-        wbs_code: prerequisitesId,
-        parent_wbs_code: projectId,
-        wbs_name: "P | Pre-requisites"
+      
+      // Add existing prerequisite entries
+      const existingPrereqs = projectState.wbsNodes.filter(node => 
+        node.parent_wbs_code === "1.2" && 
+        !node.wbs_code.startsWith("1.2.") === false // This is a prerequisite entry
+      );
+      
+      existingPrereqs.forEach(prereq => {
+        if (!nodes.some(existing => existing.wbs_code === prereq.wbs_code)) {
+          nodes.push(prereq);
+        }
       });
     }
 
