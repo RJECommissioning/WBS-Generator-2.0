@@ -279,6 +279,9 @@ const WBSGenerator = () => {
     let subsystemCounter = projectState?.lastWbsCode ? projectState.lastWbsCode : 3; // Start subsystems at 1.3 or continue from existing
     let tbcCounter = 1;
 
+    // Calculate how many subsystems already exist (for proper S-numbering)
+    const existingSubsystemCount = projectState?.subsystems?.length || 0;
+
     // Project root
     const projectId = "1";
     nodes.push({
@@ -353,7 +356,8 @@ const WBSGenerator = () => {
     subsystems.forEach((subsystem, index) => {
       const formattedSubsystemName = formatSubsystemName(subsystem);
       const subsystemId = `1.${subsystemCounter}`;
-      const subsystemLabel = `S${index + 1} | ${formattedSubsystemName}`;
+      // Fix: Start S-numbering from existing subsystem count + 1
+      const subsystemLabel = `S${existingSubsystemCount + index + 1} | ${formattedSubsystemName}`;
       
       nodes.push({
         wbs_code: subsystemId,
@@ -362,7 +366,7 @@ const WBSGenerator = () => {
       });
 
       // Add to prerequisites with formatted name
-      const prerequisiteId = `1.2.${index + 1}`;
+      const prerequisiteId = `1.2.${existingSubsystemCount + index + 1}`;
       nodes.push({
         wbs_code: prerequisiteId,
         parent_wbs_code: prerequisitesId,
@@ -403,7 +407,7 @@ const WBSGenerator = () => {
     const newProjectState = {
       projectName,
       lastWbsCode: subsystemCounter,
-      subsystems: subsystems.map(formatSubsystemName),
+      subsystems: [...(projectState?.subsystems || []), ...subsystems.map(formatSubsystemName)],
       wbsNodes: nodes,
       timestamp: new Date().toISOString()
     };
