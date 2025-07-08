@@ -276,54 +276,72 @@ const WBSGenerator = () => {
 
   const generateWBS = (data) => {
     const nodes = [];
-    let subsystemCounter = projectState?.lastWbsCode ? projectState.lastWbsCode : 3; // Start subsystems at 1.3 or continue from existing
+    let subsystemCounter = projectState?.lastWbsCode ? projectState.lastWbsCode : 3;
     let tbcCounter = 1;
 
     // Calculate how many subsystems already exist (for proper S-numbering)
     const existingSubsystemCount = projectState?.subsystems?.length || 0;
 
-    // Project root
-    const projectId = "1";
-    nodes.push({
-      wbs_code: projectId,
-      parent_wbs_code: null,
-      wbs_name: projectName
-    });
+    // If continuing a project, merge existing nodes with new ones
+    if (projectState?.wbsNodes && projectState.wbsNodes.length > 0) {
+      // Add existing nodes first
+      nodes.push(...projectState.wbsNodes);
+      
+      // Find existing TBC section and remove it (we'll regenerate it)
+      const tbcNodeIndex = nodes.findIndex(node => 
+        node.wbs_name === "TBC - Equipment To Be Confirmed"
+      );
+      if (tbcNodeIndex !== -1) {
+        // Remove TBC section and its children
+        const tbcCode = nodes[tbcNodeIndex].wbs_code;
+        nodes.splice(tbcNodeIndex, 1);
+        // Remove TBC children
+        for (let i = nodes.length - 1; i >= 0; i--) {
+          if (nodes[i].parent_wbs_code === tbcCode) {
+            nodes.splice(i, 1);
+          }
+        }
+      }
+    } else {
+      // New project - create base structure
+      const projectId = "1";
+      nodes.push({
+        wbs_code: projectId,
+        parent_wbs_code: null,
+        wbs_name: projectName
+      });
 
-    // M | Milestones
-    const milestonesId = "1.1";
-    nodes.push({
-      wbs_code: milestonesId,
-      parent_wbs_code: projectId,
-      wbs_name: "M | Milestones"
-    });
+      // M | Milestones
+      const milestonesId = "1.1";
+      nodes.push({
+        wbs_code: milestonesId,
+        parent_wbs_code: projectId,
+        wbs_name: "M | Milestones"
+      });
 
-    // P | Pre-requisites
-    const prerequisitesId = "1.2";
-    nodes.push({
-      wbs_code: prerequisitesId,
-      parent_wbs_code: projectId,
-      wbs_name: "P | Pre-requisites"
-    });
+      // P | Pre-requisites
+      const prerequisitesId = "1.2";
+      nodes.push({
+        wbs_code: prerequisitesId,
+        parent_wbs_code: projectId,
+        wbs_name: "P | Pre-requisites"
+      });
+    }
 
     // Process subsystems with Z-code ordering
     const rawSubsystems = [...new Set(data.filter(item => item.commissioning === 'Y').map(item => item.subsystem))];
     
     // Function to extract Z-code from subsystem name and format it properly
     const formatSubsystemName = (subsystem) => {
-      // Look for Z pattern in the subsystem name
       const zMatch = subsystem.match(/Z\d+/i);
       if (zMatch) {
         const zCode = zMatch[0].toUpperCase();
-        // Remove the Z code and any surrounding characters (-, +, spaces) from the original name
         let cleanName = subsystem.replace(/[-\s]*\+?Z\d+[-\s]*/i, '').trim();
-        // Remove any trailing dashes or plus signs
         cleanName = cleanName.replace(/[-\s\+]+$/, '').trim();
-        // Remove any leading dashes or plus signs  
         cleanName = cleanName.replace(/^[-\s\+]+/, '').trim();
         return `+${zCode} - ${cleanName}`;
       }
-      return subsystem; // Return as-is if no Z pattern found
+      return subsystem;
     };
     
     // Sort subsystems by Z-code with Substation always last
@@ -331,7 +349,6 @@ const WBSGenerator = () => {
       const aFormatted = formatSubsystemName(a);
       const bFormatted = formatSubsystemName(b);
       
-      // Check if either is a substation (always goes last)
       const aIsSubstation = a.toLowerCase().includes('substation');
       const bIsSubstation = b.toLowerCase().includes('substation');
       
@@ -339,37 +356,35 @@ const WBSGenerator = () => {
       if (!aIsSubstation && bIsSubstation) return -1;
       if (aIsSubstation && bIsSubstation) return 0;
       
-      // Extract Z numbers for comparison
       const aZMatch = aFormatted.match(/Z(\d+)/);
       const bZMatch = bFormatted.match(/Z(\d+)/);
       
       if (aZMatch && bZMatch) {
         const aZNum = parseInt(aZMatch[1]);
         const bZNum = parseInt(bZMatch[1]);
-        return aZNum - bZNum; // Sort by Z number (Z01, Z02, Z03, etc.)
+        return aZNum - bZNum;
       }
       
-      // If no Z codes, sort alphabetically
       return aFormatted.localeCompare(bFormatted);
     });
     
+    // Add new subsystems
     subsystems.forEach((subsystem, index) => {
       const formattedSubsystemName = formatSubsystemName(subsystem);
       const subsystemId = `1.${subsystemCounter}`;
-      // Fix: Start S-numbering from existing subsystem count + 1
       const subsystemLabel = `S${existingSubsystemCount + index + 1} | ${formattedSubsystemName}`;
       
       nodes.push({
         wbs_code: subsystemId,
-        parent_wbs_code: projectId,
+        parent_wbs_code: "1",
         wbs_name: subsystemLabel
       });
 
-      // Add to prerequisites with formatted name
+      // Add to prerequisites
       const prerequisiteId = `1.2.${existingSubsystemCount + index + 1}`;
       nodes.push({
         wbs_code: prerequisiteId,
-        parent_wbs_code: prerequisitesId,
+        parent_wbs_code: "1.2",
         wbs_name: formattedSubsystemName
       });
 
@@ -383,7 +398,7 @@ const WBSGenerator = () => {
       const tbcId = `1.${subsystemCounter}`;
       nodes.push({
         wbs_code: tbcId,
-        parent_wbs_code: projectId,
+        parent_wbs_code: "1",
         wbs_name: "TBC - Equipment To Be Confirmed"
       });
 
