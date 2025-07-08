@@ -58,6 +58,7 @@ const WBSGenerator = () => {
     parentWbsCode: '',
     startingWbsCode: ''
   });
+  const [isContinueMode, setIsContinueMode] = useState(false); // Track if we're in continue project mode
   const fileInputRef = useRef(null);
   const projectStateInputRef = useRef(null);
 
@@ -287,6 +288,9 @@ const WBSGenerator = () => {
     const newNodes = []; // For export (new items only)
     let subsystemCounter = projectState?.lastWbsCode ? projectState.lastWbsCode : 3;
     let tbcCounter = 1;
+
+    // Set continue mode flag
+    setIsContinueMode(!!projectState);
 
     // Calculate how many subsystems already exist (for proper S-numbering)
     const existingSubsystemCount = projectState?.subsystems?.length || 0;
@@ -780,7 +784,13 @@ const WBSGenerator = () => {
 
         <div className="grid md:grid-cols-3 gap-4 mb-6">
           <button
-            onClick={() => setUploadMode('new')}
+            onClick={() => {
+              setUploadMode('new');
+              setIsContinueMode(false);
+              setProjectState(null);
+              setWbsOutput([]);
+              setWbsVisualization([]);
+            }}
             className={`p-6 rounded-lg border-2 transition-all ${
               uploadMode === 'new' ? 'border-opacity-100 shadow-lg' : 'border-opacity-30 hover:border-opacity-60'
             }`}
@@ -795,7 +805,10 @@ const WBSGenerator = () => {
           </button>
           
           <button
-            onClick={() => setUploadMode('continue')}
+            onClick={() => {
+              setUploadMode('continue');
+              setIsContinueMode(true);
+            }}
             className={`p-6 rounded-lg border-2 transition-all ${
               uploadMode === 'continue' ? 'border-opacity-100 shadow-lg' : 'border-opacity-30 hover:border-opacity-60'
             }`}
@@ -810,7 +823,10 @@ const WBSGenerator = () => {
           </button>
           
           <button
-            onClick={() => setUploadMode('missing')}
+            onClick={() => {
+              setUploadMode('missing');
+              setIsContinueMode(false);
+            }}
             className={`p-6 rounded-lg border-2 transition-all ${
               uploadMode === 'missing' ? 'border-opacity-100 shadow-lg' : 'border-opacity-30 hover:border-opacity-60'
             }`}
@@ -1049,7 +1065,7 @@ const WBSGenerator = () => {
 
       {(wbsOutput.length > 0 || wbsVisualization.length > 0) && (
         <div className="space-y-6">
-          <WBSTreeVisualization wbsNodes={wbsVisualization} />
+          <WBSTreeVisualization wbsNodes={wbsVisualization} isContinueMode={isContinueMode} />
           
           <div className="bg-white rounded-xl shadow-lg p-6">
             <h3 className="text-xl font-bold mb-4" style={{ color: rjeColors.darkBlue }}>
@@ -1176,7 +1192,7 @@ const WBSGenerator = () => {
 };
 
 // Enhanced WBS Tree Visualization Component
-const WBSTreeVisualization = ({ wbsNodes }) => {
+const WBSTreeVisualization = ({ wbsNodes, isContinueMode = false }) => {
   const [expandedNodes, setExpandedNodes] = useState(new Set());
   const [showVisualization, setShowVisualization] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -1259,12 +1275,16 @@ const WBSTreeVisualization = ({ wbsNodes }) => {
       if (!hasMatchingChildren) return null;
     }
 
+    const showNewExistingLabels = isContinueMode;
+    const isNewNode = showNewExistingLabels && node.isNew;
+    const isExistingNode = showNewExistingLabels && node.isExisting;
+
     return (
       <div className="select-none">
         <div 
           className={`flex items-center py-2 px-3 rounded-lg mb-1 cursor-pointer hover:shadow-sm transition-all ${
             level === 0 ? 'border-l-4' : ''
-          } ${node.isNew ? 'border-r-4 border-r-green-400' : ''} ${node.isExisting ? 'opacity-70' : ''}`}
+          } ${isNewNode ? 'border-r-4 border-r-green-400' : ''} ${isExistingNode ? 'opacity-70' : ''}`}
           style={{ 
             marginLeft: `${level * 20}px`,
             backgroundColor: getNodeBackgroundColor(node.wbs_name, node.isNew, node.isExisting),
@@ -1287,22 +1307,22 @@ const WBSTreeVisualization = ({ wbsNodes }) => {
               <div className="flex items-center">
                 <span 
                   className={`text-sm font-medium mr-3 px-2 py-1 rounded ${
-                    node.isNew ? 'bg-green-600 text-white' : 
-                    node.isExisting ? 'bg-gray-500 text-white' : 'text-white'
+                    showNewExistingLabels && isNewNode ? 'bg-green-600 text-white' : 
+                    showNewExistingLabels && isExistingNode ? 'bg-gray-500 text-white' : 'text-white'
                   }`}
-                  style={{ backgroundColor: node.isNew ? '#16a34a' : node.isExisting ? '#6b7280' : rjeColors.darkBlue }}
+                  style={{ backgroundColor: showNewExistingLabels && isNewNode ? '#16a34a' : showNewExistingLabels && isExistingNode ? '#6b7280' : rjeColors.darkBlue }}
                 >
                   {node.wbs_code}
                 </span>
-                <span className={`font-medium ${node.isExisting ? 'text-gray-600' : 'text-gray-800'}`}>
+                <span className={`font-medium ${isExistingNode ? 'text-gray-600' : 'text-gray-800'}`}>
                   {node.wbs_name}
                 </span>
-                {node.isNew && (
+                {showNewExistingLabels && isNewNode && (
                   <span className="ml-2 px-2 py-1 text-xs bg-green-100 text-green-800 rounded-full">
                     NEW
                   </span>
                 )}
-                {node.isExisting && (
+                {showNewExistingLabels && isExistingNode && (
                   <span className="ml-2 px-2 py-1 text-xs bg-gray-100 text-gray-600 rounded-full">
                     EXISTING
                   </span>
@@ -1346,10 +1366,13 @@ const WBSTreeVisualization = ({ wbsNodes }) => {
       <div className="flex items-center justify-between mb-6">
         <div>
           <h3 className="text-xl font-bold" style={{ color: rjeColors.darkBlue }}>
-            Complete WBS Structure Visualization
+            {isContinueMode ? 'Complete WBS Structure Visualization' : 'WBS Structure Visualization'}
           </h3>
           <p className="text-sm text-gray-600 mt-1">
-            {existingNodesCount} existing • {newNodesCount} new • {wbsNodes.length} total nodes
+            {isContinueMode ? 
+              `${existingNodesCount} existing • ${newNodesCount} new • ${wbsNodes.length} total nodes` :
+              `${wbsNodes.length} total nodes`
+            }
           </p>
         </div>
         <button
@@ -1426,16 +1449,18 @@ const WBSTreeVisualization = ({ wbsNodes }) => {
               <div className="flex items-center">S | Subsystems</div>
               <div className="flex items-center">TBC | To Be Confirmed</div>
             </div>
-            <div className="flex flex-wrap gap-4 text-sm">
-              <div className="flex items-center">
-                <div className="w-4 h-4 bg-green-600 rounded mr-2"></div>
-                <span>New Items (for export)</span>
+            {isContinueMode && (
+              <div className="flex flex-wrap gap-4 text-sm">
+                <div className="flex items-center">
+                  <div className="w-4 h-4 bg-green-600 rounded mr-2"></div>
+                  <span>New Items (for export)</span>
+                </div>
+                <div className="flex items-center">
+                  <div className="w-4 h-4 bg-gray-500 rounded mr-2"></div>
+                  <span>Existing Items (already in project)</span>
+                </div>
               </div>
-              <div className="flex items-center">
-                <div className="w-4 h-4 bg-gray-500 rounded mr-2"></div>
-                <span>Existing Items (already in project)</span>
-              </div>
-            </div>
+            )}
           </div>
         </>
       )}
