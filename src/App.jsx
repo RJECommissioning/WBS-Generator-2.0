@@ -1,5 +1,5 @@
 import React, { useState, useRef, createContext, useContext } from 'react';
-import { Upload, Download, Settings, Plus, FileText, Zap, ChevronRight, ChevronDown, Eye, EyeOff } from 'lucide-react';
+import { Upload, Download, Settings, Plus, FileText, Zap, ChevronRight, ChevronDown, Eye, EyeOff, Info } from 'lucide-react';
 
 // RJE Brand Colors
 const rjeColors = {
@@ -50,7 +50,8 @@ const WBSGenerator = () => {
   const { projectState, setProjectState } = useContext(ProjectContext);
   const [uploadMode, setUploadMode] = useState('new');
   const [equipmentData, setEquipmentData] = useState([]);
-  const [wbsOutput, setWbsOutput] = useState([]);
+  const [wbsOutput, setWbsOutput] = useState([]); // For export (new items only)
+  const [wbsVisualization, setWbsVisualization] = useState([]); // For visualization (complete structure)
   const [isProcessing, setIsProcessing] = useState(false);
   const [projectName, setProjectName] = useState('Sample Project');
   const [missingEquipmentConfig, setMissingEquipmentConfig] = useState({
@@ -232,7 +233,8 @@ const WBSGenerator = () => {
         throw new Error('Unsupported file format. Please use .xlsx, .xls, or .csv files.');
       }
 
-      const rootNode = wbsData.find(node => node.parent_wbs_code === null);
+      // Find root node for project name
+      const rootNode = wbsData.find(node => node.parent_wbs_code === null || node.parent_wbs_code === '');
       if (rootNode) {
         projectName = rootNode.wbs_name;
       }
@@ -251,6 +253,7 @@ const WBSGenerator = () => {
         lastWbsCode = Math.max(...subsystemNumbers) + 1;
       }
 
+      // Extract existing subsystems
       subsystems = wbsData
         .filter(node => node.wbs_name.startsWith('S') && node.wbs_name.includes('|'))
         .map(node => node.wbs_name.split('|')[1]?.trim() || '')
@@ -266,7 +269,12 @@ const WBSGenerator = () => {
 
       setProjectState(loadedState);
       setProjectName(loadedState.projectName);
-      setWbsOutput(loadedState.wbsNodes);
+      
+      // Set visualization to show existing structure
+      setWbsVisualization(loadedState.wbsNodes);
+      
+      // Clear export output until new equipment is added
+      setWbsOutput([]);
       
     } catch (error) {
       console.error('Project state loading error:', error);
@@ -288,7 +296,8 @@ const WBSGenerator = () => {
     allNodes.push({
       wbs_code: projectId,
       parent_wbs_code: null,
-      wbs_name: projectName
+      wbs_name: projectName,
+      isExisting: !projectState // Mark as existing if continuing project
     });
 
     // M | Milestones
@@ -296,7 +305,8 @@ const WBSGenerator = () => {
     allNodes.push({
       wbs_code: milestonesId,
       parent_wbs_code: projectId,
-      wbs_name: "M | Milestones"
+      wbs_name: "M | Milestones",
+      isExisting: !projectState
     });
 
     // P | Pre-requisites
@@ -304,7 +314,8 @@ const WBSGenerator = () => {
     allNodes.push({
       wbs_code: prerequisitesId,
       parent_wbs_code: projectId,
-      wbs_name: "P | Pre-requisites"
+      wbs_name: "P | Pre-requisites",
+      isExisting: !projectState
     });
 
     // If continuing a project, add existing subsystem nodes (for preview only)
@@ -463,6 +474,9 @@ const WBSGenerator = () => {
     // Set output to NEW nodes only for export
     setWbsOutput(newNodes);
     
+    // Set visualization to COMPLETE structure for preview
+    setWbsVisualization(allNodes);
+    
     const newProjectState = {
       projectName,
       lastWbsCode: subsystemCounter,
@@ -475,7 +489,7 @@ const WBSGenerator = () => {
   };
 
   const validateP6Structure = (nodes) => {
-    const rootNodes = nodes.filter(n => n.parent_wbs_code === null);
+    const rootNodes = nodes.filter(n => n.parent_wbs_code === null || n.parent_wbs_code === '');
     if (rootNodes.length !== 1) {
       console.warn(`P6 Warning: Expected 1 root node, found: ${rootNodes.length}`);
       return false;
@@ -483,20 +497,9 @@ const WBSGenerator = () => {
 
     const codeSet = new Set(nodes.map(n => n.wbs_code));
     for (const node of nodes) {
-      if (node.parent_wbs_code !== null && !codeSet.has(node.parent_wbs_code)) {
+      if (node.parent_wbs_code !== null && node.parent_wbs_code !== '' && !codeSet.has(node.parent_wbs_code)) {
         console.warn(`P6 Warning: Parent WBS code ${node.parent_wbs_code} not found for node ${node.wbs_code}`);
         return false;
-      }
-    }
-
-    // Check hierarchical structure
-    for (const node of nodes) {
-      if (node.parent_wbs_code !== null) {
-        const parentNode = nodes.find(n => n.wbs_code === node.parent_wbs_code);
-        if (!parentNode) {
-          console.warn(`P6 Warning: Parent node ${node.parent_wbs_code} not found for ${node.wbs_code}`);
-          return false;
-        }
       }
     }
 
@@ -730,6 +733,27 @@ const WBSGenerator = () => {
     const link = document.createElement('a');
     link.href = url;
     link.download = `${projectName}_WBS_P6_Import.csv`;
+    link.click();
+    
+    URL.revokeObjectURL(url);
+  };
+
+  const exportCompleteWBSCSV = () => {
+    if (wbsVisualization.length === 0) return;
+
+    const csvContent = [
+      'wbs_code,parent_wbs_code,wbs_name',
+      ...wbsVisualization.map(node => 
+        `"${node.wbs_code}","${node.parent_wbs_code || ''}","${node.wbs_name}"`
+      )
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${projectName}_Complete_WBS_Structure.csv`;
     link.click();
     
     URL.revokeObjectURL(url);
@@ -1024,27 +1048,53 @@ const WBSGenerator = () => {
         </div>
       )}
 
-      {wbsOutput.length > 0 && (
+      {(wbsOutput.length > 0 || wbsVisualization.length > 0) && (
         <div className="space-y-6">
-          <WBSTreeVisualization wbsNodes={wbsOutput} />
+          <WBSTreeVisualization wbsNodes={wbsVisualization} />
           
           <div className="bg-white rounded-xl shadow-lg p-6">
             <h3 className="text-xl font-bold mb-4" style={{ color: rjeColors.darkBlue }}>
-              Export WBS Structure ({wbsOutput.length} nodes) - Modern Architecture (v4.0) - WBS Generator v2.0
+              Export WBS Structure - Modern Architecture (v4.0) - WBS Generator v2.0
             </h3>
+            
+            {/* Export Status Information */}
+            <div className="mb-6 p-4 rounded-lg" style={{ backgroundColor: rjeColors.lightGreen + '15' }}>
+              <div className="flex items-center mb-2">
+                <Info className="w-5 h-5 mr-2" style={{ color: rjeColors.darkBlue }} />
+                <h4 className="font-semibold" style={{ color: rjeColors.darkBlue }}>
+                  Export Options:
+                </h4>
+              </div>
+              <ul className="text-sm space-y-1 text-gray-700">
+                <li>• <strong>New Items CSV:</strong> Contains only newly added equipment ({wbsOutput.length} nodes) - Use for P6 import</li>
+                <li>• <strong>Complete Structure CSV:</strong> Contains entire WBS structure ({wbsVisualization.length} nodes) - Use for full project backup</li>
+                <li>• <strong>Project State JSON:</strong> Technical backup for continuing project later</li>
+              </ul>
+            </div>
             
             <div className="flex flex-wrap gap-3 mb-6">
               <button
                 onClick={exportWBSCSV}
-                className="flex items-center px-4 py-2 text-white rounded-lg font-medium"
+                disabled={wbsOutput.length === 0}
+                className="flex items-center px-4 py-2 text-white rounded-lg font-medium disabled:opacity-50"
                 style={{ backgroundColor: rjeColors.teal }}
               >
                 <Download className="w-4 h-4 mr-2" />
-                Export WBS CSV (for P6 & Continue Project)
+                Export New Items CSV ({wbsOutput.length} nodes)
+              </button>
+              <button
+                onClick={exportCompleteWBSCSV}
+                disabled={wbsVisualization.length === 0}
+                className="flex items-center px-4 py-2 text-white rounded-lg font-medium disabled:opacity-50"
+                style={{ backgroundColor: rjeColors.blue }}
+              >
+                <Download className="w-4 h-4 mr-2" />
+                Export Complete Structure CSV ({wbsVisualization.length} nodes)
               </button>
               <button
                 onClick={exportProjectState}
-                className="flex items-center px-4 py-2 text-white rounded-lg font-medium"
+                disabled={!projectState}
+                className="flex items-center px-4 py-2 text-white rounded-lg font-medium disabled:opacity-50"
                 style={{ backgroundColor: rjeColors.darkGreen }}
               >
                 <FileText className="w-4 h-4 mr-2" />
@@ -1054,23 +1104,23 @@ const WBSGenerator = () => {
 
             <div className="mb-4 p-3 rounded-lg" style={{ backgroundColor: rjeColors.lightGreen + '15' }}>
               <p className="text-sm text-gray-700">
-                <strong>💡 P6 Import Ready:</strong> Use the <strong>WBS CSV export</strong> for Primavera P6 import or to continue this project later. 
-                The CSV file uses tab-separated format optimized for P6 compatibility with hierarchical decimal numbering.
+                <strong>💡 Continue Project Workflow:</strong> Use the <strong>New Items CSV</strong> to import only the newly added equipment into P6. 
+                Use the <strong>Complete Structure CSV</strong> to continue adding more subsystems later.
               </p>
             </div>
 
             <div className="grid md:grid-cols-5 gap-4 mb-6">
               <div className="text-center p-3 rounded-lg" style={{ backgroundColor: `${rjeColors.mediumGreen}20` }}>
                 <div className="text-2xl font-bold" style={{ color: rjeColors.darkBlue }}>
-                  {wbsOutput.length}
+                  {wbsVisualization.length}
                 </div>
                 <div className="text-sm text-gray-600">Total WBS Nodes</div>
               </div>
               <div className="text-center p-3 rounded-lg" style={{ backgroundColor: `${rjeColors.darkGreen}20` }}>
                 <div className="text-2xl font-bold" style={{ color: rjeColors.darkBlue }}>
-                  {projectState?.subsystems.length || 0}
+                  {wbsOutput.length}
                 </div>
-                <div className="text-sm text-gray-600">Subsystems</div>
+                <div className="text-sm text-gray-600">New Nodes</div>
               </div>
               <div className="text-center p-3 rounded-lg" style={{ backgroundColor: `${rjeColors.teal}20` }}>
                 <div className="text-2xl font-bold" style={{ color: rjeColors.darkBlue }}>
@@ -1095,10 +1145,10 @@ const WBSGenerator = () => {
             <div className="bg-gray-50 rounded-lg p-4 max-h-64 overflow-y-auto">
               <div className="flex justify-between items-center mb-2">
                 <h4 className="font-semibold text-sm" style={{ color: rjeColors.darkBlue }}>
-                  WBS Structure Preview (P6 Format)
+                  New Items Preview (For P6 Import)
                 </h4>
                 <span className="text-xs text-gray-500">
-                  Hierarchical: {wbsOutput[0]?.wbs_code} - {wbsOutput[wbsOutput.length - 1]?.wbs_code}
+                  {wbsOutput.length > 0 ? `${wbsOutput[0]?.wbs_code} - ${wbsOutput[wbsOutput.length - 1]?.wbs_code}` : 'No new items'}
                 </span>
               </div>
               <div className="text-sm font-mono">
@@ -1112,7 +1162,10 @@ const WBSGenerator = () => {
                   </div>
                 ))}
                 {wbsOutput.length > 20 && (
-                  <div className="text-gray-500 py-2">... and {wbsOutput.length - 20} more nodes</div>
+                  <div className="text-gray-500 py-2">... and {wbsOutput.length - 20} more new nodes</div>
+                )}
+                {wbsOutput.length === 0 && (
+                  <div className="text-gray-500 py-2">No new items to export. Load existing WBS structure and add equipment.</div>
                 )}
               </div>
             </div>
@@ -1123,7 +1176,7 @@ const WBSGenerator = () => {
   );
 };
 
-// WBS Tree Visualization Component
+// Enhanced WBS Tree Visualization Component
 const WBSTreeVisualization = ({ wbsNodes }) => {
   const [expandedNodes, setExpandedNodes] = useState(new Set());
   const [showVisualization, setShowVisualization] = useState(true);
@@ -1139,7 +1192,7 @@ const WBSTreeVisualization = ({ wbsNodes }) => {
     const roots = [];
     nodes.forEach(node => {
       const nodeWithChildren = nodeMap.get(node.wbs_code);
-      if (node.parent_wbs_code === null) {
+      if (node.parent_wbs_code === null || node.parent_wbs_code === '') {
         roots.push(nodeWithChildren);
       } else {
         const parent = nodeMap.get(node.parent_wbs_code);
@@ -1170,22 +1223,25 @@ const WBSTreeVisualization = ({ wbsNodes }) => {
     setExpandedNodes(new Set());
   };
 
-  const getNodeBackgroundColor = (wbsName) => {
-    if (wbsName.includes('01 |')) return rjeColors.lightGreen + '20';
-    if (wbsName.includes('02 |')) return rjeColors.mediumGreen + '20';
-    if (wbsName.includes('03 |')) return rjeColors.darkGreen + '20';
-    if (wbsName.includes('04 |')) return rjeColors.teal + '20';
-    if (wbsName.includes('05 |')) return rjeColors.blue + '20';
-    if (wbsName.includes('06 |')) return rjeColors.darkBlue + '20';
-    if (wbsName.includes('07 |')) return rjeColors.lightGreen + '25';
-    if (wbsName.includes('08 |')) return rjeColors.mediumGreen + '25';
-    if (wbsName.includes('09 |')) return rjeColors.darkGreen + '25';
-    if (wbsName.includes('10 |')) return rjeColors.teal + '25';
-    if (wbsName.includes('99 |')) return rjeColors.blue + '25';
-    if (wbsName.includes('M |')) return rjeColors.mediumGreen + '30';
-    if (wbsName.includes('P |')) return rjeColors.teal + '30';
-    if (wbsName.includes('S') && wbsName.includes('|')) return rjeColors.darkBlue + '30';
-    return 'transparent';
+  const getNodeBackgroundColor = (wbsName, isNew, isExisting) => {
+    let baseColor = 'transparent';
+    
+    if (wbsName.includes('01 |')) baseColor = rjeColors.lightGreen + '20';
+    else if (wbsName.includes('02 |')) baseColor = rjeColors.mediumGreen + '20';
+    else if (wbsName.includes('03 |')) baseColor = rjeColors.darkGreen + '20';
+    else if (wbsName.includes('04 |')) baseColor = rjeColors.teal + '20';
+    else if (wbsName.includes('05 |')) baseColor = rjeColors.blue + '20';
+    else if (wbsName.includes('06 |')) baseColor = rjeColors.darkBlue + '20';
+    else if (wbsName.includes('07 |')) baseColor = rjeColors.lightGreen + '25';
+    else if (wbsName.includes('08 |')) baseColor = rjeColors.mediumGreen + '25';
+    else if (wbsName.includes('09 |')) baseColor = rjeColors.darkGreen + '25';
+    else if (wbsName.includes('10 |')) baseColor = rjeColors.teal + '25';
+    else if (wbsName.includes('99 |')) baseColor = rjeColors.blue + '25';
+    else if (wbsName.includes('M |')) baseColor = rjeColors.mediumGreen + '30';
+    else if (wbsName.includes('P |')) baseColor = rjeColors.teal + '30';
+    else if (wbsName.includes('S') && wbsName.includes('|')) baseColor = rjeColors.darkBlue + '30';
+    
+    return baseColor;
   };
 
   const TreeNode = ({ node, level }) => {
@@ -1209,10 +1265,10 @@ const WBSTreeVisualization = ({ wbsNodes }) => {
         <div 
           className={`flex items-center py-2 px-3 rounded-lg mb-1 cursor-pointer hover:shadow-sm transition-all ${
             level === 0 ? 'border-l-4' : ''
-          }`}
+          } ${node.isNew ? 'border-r-4 border-r-green-400' : ''} ${node.isExisting ? 'opacity-70' : ''}`}
           style={{ 
             marginLeft: `${level * 20}px`,
-            backgroundColor: getNodeBackgroundColor(node.wbs_name),
+            backgroundColor: getNodeBackgroundColor(node.wbs_name, node.isNew, node.isExisting),
             borderLeftColor: level === 0 ? rjeColors.darkBlue : 'transparent'
           }}
           onClick={() => hasChildren && toggleNode(node.wbs_code)}
@@ -1231,12 +1287,27 @@ const WBSTreeVisualization = ({ wbsNodes }) => {
             <div className="flex-1">
               <div className="flex items-center">
                 <span 
-                  className="text-sm font-medium mr-3 px-2 py-1 rounded"
-                  style={{ backgroundColor: rjeColors.darkBlue, color: 'white' }}
+                  className={`text-sm font-medium mr-3 px-2 py-1 rounded ${
+                    node.isNew ? 'bg-green-600 text-white' : 
+                    node.isExisting ? 'bg-gray-500 text-white' : 'text-white'
+                  }`}
+                  style={{ backgroundColor: node.isNew ? '#16a34a' : node.isExisting ? '#6b7280' : rjeColors.darkBlue }}
                 >
                   {node.wbs_code}
                 </span>
-                <span className="font-medium text-gray-800">{node.wbs_name}</span>
+                <span className={`font-medium ${node.isExisting ? 'text-gray-600' : 'text-gray-800'}`}>
+                  {node.wbs_name}
+                </span>
+                {node.isNew && (
+                  <span className="ml-2 px-2 py-1 text-xs bg-green-100 text-green-800 rounded-full">
+                    NEW
+                  </span>
+                )}
+                {node.isExisting && (
+                  <span className="ml-2 px-2 py-1 text-xs bg-gray-100 text-gray-600 rounded-full">
+                    EXISTING
+                  </span>
+                )}
               </div>
             </div>
             
@@ -1268,12 +1339,20 @@ const WBSTreeVisualization = ({ wbsNodes }) => {
     node.wbs_code.toString().includes(searchTerm)
   ) : [];
 
+  const newNodesCount = wbsNodes.filter(node => node.isNew).length;
+  const existingNodesCount = wbsNodes.filter(node => node.isExisting).length;
+
   return (
     <div className="bg-white rounded-xl shadow-lg p-6">
       <div className="flex items-center justify-between mb-6">
-        <h3 className="text-xl font-bold" style={{ color: rjeColors.darkBlue }}>
-          WBS Structure Visualization
-        </h3>
+        <div>
+          <h3 className="text-xl font-bold" style={{ color: rjeColors.darkBlue }}>
+            Complete WBS Structure Visualization
+          </h3>
+          <p className="text-sm text-gray-600 mt-1">
+            {existingNodesCount} existing • {newNodesCount} new • {wbsNodes.length} total nodes
+          </p>
+        </div>
         <button
           onClick={() => setShowVisualization(!showVisualization)}
           className="flex items-center px-4 py-2 text-white rounded-lg font-medium"
@@ -1329,9 +1408,9 @@ const WBSTreeVisualization = ({ wbsNodes }) => {
 
           <div className="mt-6 p-4 rounded-lg" style={{ backgroundColor: rjeColors.lightGreen + '10' }}>
             <h4 className="font-semibold mb-3" style={{ color: rjeColors.darkBlue }}>
-              Category Legend
+              Legend & Category Guide
             </h4>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2 text-sm">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2 text-sm mb-4">
               <div className="flex items-center">01 | Preparations</div>
               <div className="flex items-center">02 | Protection</div>
               <div className="flex items-center">03 | HV Switchboards</div>
@@ -1347,6 +1426,16 @@ const WBSTreeVisualization = ({ wbsNodes }) => {
               <div className="flex items-center">P | Pre-requisites</div>
               <div className="flex items-center">S | Subsystems</div>
               <div className="flex items-center">TBC | To Be Confirmed</div>
+            </div>
+            <div className="flex flex-wrap gap-4 text-sm">
+              <div className="flex items-center">
+                <div className="w-4 h-4 bg-green-600 rounded mr-2"></div>
+                <span>New Items (for export)</span>
+              </div>
+              <div className="flex items-center">
+                <div className="w-4 h-4 bg-gray-500 rounded mr-2"></div>
+                <span>Existing Items (already in project)</span>
+              </div>
             </div>
           </div>
         </>
