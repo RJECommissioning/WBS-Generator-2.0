@@ -275,7 +275,8 @@ const WBSGenerator = () => {
   };
 
   const generateWBS = (data) => {
-    const nodes = [];
+    const allNodes = []; // For complete structure (preview)
+    const newNodes = []; // For export (new items only)
     let subsystemCounter = projectState?.lastWbsCode ? projectState.lastWbsCode : 3;
     let tbcCounter = 1;
 
@@ -284,7 +285,7 @@ const WBSGenerator = () => {
 
     // Always create the base structure first
     const projectId = "1";
-    nodes.push({
+    allNodes.push({
       wbs_code: projectId,
       parent_wbs_code: null,
       wbs_name: projectName
@@ -292,7 +293,7 @@ const WBSGenerator = () => {
 
     // M | Milestones
     const milestonesId = "1.1";
-    nodes.push({
+    allNodes.push({
       wbs_code: milestonesId,
       parent_wbs_code: projectId,
       wbs_name: "M | Milestones"
@@ -300,40 +301,27 @@ const WBSGenerator = () => {
 
     // P | Pre-requisites
     const prerequisitesId = "1.2";
-    nodes.push({
+    allNodes.push({
       wbs_code: prerequisitesId,
       parent_wbs_code: projectId,
       wbs_name: "P | Pre-requisites"
     });
 
-    // If continuing a project, add existing subsystem nodes (but not base structure)
+    // If continuing a project, add existing subsystem nodes (for preview only)
     if (projectState?.wbsNodes && projectState.wbsNodes.length > 0) {
-      // Add existing nodes but skip base structure (1, 1.1, 1.2) and TBC
       const existingNodes = projectState.wbsNodes.filter(node => 
         node.wbs_code !== "1" && 
         node.wbs_code !== "1.1" && 
         node.wbs_code !== "1.2" &&
-        !node.wbs_name.includes("TBC - Equipment To Be Confirmed") &&
-        !node.parent_wbs_code?.includes("TBC")
+        !node.wbs_name.includes("TBC - Equipment To Be Confirmed")
       );
       
-      // Add existing subsystem nodes
       existingNodes.forEach(node => {
-        // Skip if this node already exists in our base structure
-        if (!nodes.some(existing => existing.wbs_code === node.wbs_code)) {
-          nodes.push(node);
-        }
-      });
-      
-      // Add existing prerequisite entries
-      const existingPrereqs = projectState.wbsNodes.filter(node => 
-        node.parent_wbs_code === "1.2" && 
-        !node.wbs_code.startsWith("1.2.") === false // This is a prerequisite entry
-      );
-      
-      existingPrereqs.forEach(prereq => {
-        if (!nodes.some(existing => existing.wbs_code === prereq.wbs_code)) {
-          nodes.push(prereq);
+        if (!allNodes.some(existing => existing.wbs_code === node.wbs_code)) {
+          allNodes.push({
+            ...node,
+            isExisting: true // Mark as existing for preview
+          });
         }
       });
     }
@@ -384,7 +372,15 @@ const WBSGenerator = () => {
       const subsystemId = `1.${subsystemCounter}`;
       const subsystemLabel = `S${existingSubsystemCount + index + 1} | ${formattedSubsystemName}`;
       
-      nodes.push({
+      const subsystemNode = {
+        wbs_code: subsystemId,
+        parent_wbs_code: "1",
+        wbs_name: subsystemLabel,
+        isNew: true
+      };
+      
+      allNodes.push(subsystemNode);
+      newNodes.push({
         wbs_code: subsystemId,
         parent_wbs_code: "1",
         wbs_name: subsystemLabel
@@ -392,13 +388,33 @@ const WBSGenerator = () => {
 
       // Add to prerequisites
       const prerequisiteId = `1.2.${existingSubsystemCount + index + 1}`;
-      nodes.push({
+      const prerequisiteNode = {
+        wbs_code: prerequisiteId,
+        parent_wbs_code: "1.2",
+        wbs_name: formattedSubsystemName,
+        isNew: true
+      };
+      
+      allNodes.push(prerequisiteNode);
+      newNodes.push({
         wbs_code: prerequisiteId,
         parent_wbs_code: "1.2",
         wbs_name: formattedSubsystemName
       });
 
-      generateModernStructure(nodes, subsystemId, subsystem, data);
+      // Generate structure for this subsystem
+      const subsystemStructure = [];
+      generateModernStructure(subsystemStructure, subsystemId, subsystem, data);
+      
+      // Add to both complete and new nodes
+      subsystemStructure.forEach(node => {
+        allNodes.push({
+          ...node,
+          isNew: true
+        });
+        newNodes.push(node);
+      });
+      
       subsystemCounter++;
     });
 
@@ -406,14 +422,30 @@ const WBSGenerator = () => {
     const tbcEquipment = data.filter(item => item.commissioning === 'TBC');
     if (tbcEquipment.length > 0) {
       const tbcId = `1.${subsystemCounter}`;
-      nodes.push({
+      const tbcNode = {
+        wbs_code: tbcId,
+        parent_wbs_code: "1",
+        wbs_name: "TBC - Equipment To Be Confirmed",
+        isNew: true
+      };
+      
+      allNodes.push(tbcNode);
+      newNodes.push({
         wbs_code: tbcId,
         parent_wbs_code: "1",
         wbs_name: "TBC - Equipment To Be Confirmed"
       });
 
       tbcEquipment.forEach(item => {
-        nodes.push({
+        const tbcItemNode = {
+          wbs_code: `${tbcId}.${tbcCounter}`,
+          parent_wbs_code: tbcId,
+          wbs_name: `${item.equipmentNumber} | ${item.description}`,
+          isNew: true
+        };
+        
+        allNodes.push(tbcItemNode);
+        newNodes.push({
           wbs_code: `${tbcId}.${tbcCounter}`,
           parent_wbs_code: tbcId,
           wbs_name: `${item.equipmentNumber} | ${item.description}`
@@ -422,18 +454,20 @@ const WBSGenerator = () => {
       });
     }
 
-    const isValidP6Structure = validateP6Structure(nodes);
+    // Validate the complete structure
+    const isValidP6Structure = validateP6Structure(allNodes);
     if (!isValidP6Structure) {
       console.warn('WBS structure may have P6 import issues');
     }
 
-    setWbsOutput(nodes);
+    // Set output to NEW nodes only for export
+    setWbsOutput(newNodes);
     
     const newProjectState = {
       projectName,
       lastWbsCode: subsystemCounter,
       subsystems: [...(projectState?.subsystems || []), ...subsystems.map(formatSubsystemName)],
-      wbsNodes: nodes,
+      wbsNodes: allNodes, // Store complete structure for future continues
       timestamp: new Date().toISOString()
     };
     
