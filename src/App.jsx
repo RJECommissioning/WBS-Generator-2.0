@@ -552,8 +552,7 @@ const WBSGenerator = () => {
         const subsystemEquipment = data.filter(item => 
           item.subsystem === subsystem && 
           item.commissioning === 'Y' && 
-          (equipmentPatterns.length === 0 || 
-           equipmentPatterns.some(pattern => {
+          equipmentPatterns.some(pattern => {
              const equipmentUpper = item.equipmentNumber.toUpperCase();
              const patternUpper = pattern.toUpperCase();
              
@@ -590,7 +589,7 @@ const WBSGenerator = () => {
                return equipmentUpper.includes(patternUpper) || 
                       (item.plu && item.plu.toUpperCase().includes(patternUpper));
              }
-           }))
+           })
         );
 
         if (number === '99') {
