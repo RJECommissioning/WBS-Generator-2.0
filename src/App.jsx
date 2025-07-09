@@ -51,6 +51,7 @@ const WBSGenerator = () => {
   const [uploadMode, setUploadMode] = useState('new');
   const [equipmentData, setEquipmentData] = useState([]);
   const [wbsOutput, setWbsOutput] = useState([]);
+  const [wbsVisualization, setWbsVisualization] = useState([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [projectName, setProjectName] = useState('Sample Project');
   const [missingEquipmentConfig, setMissingEquipmentConfig] = useState({
@@ -66,6 +67,18 @@ const WBSGenerator = () => {
   const fileInputRef = useRef(null);
   const projectStateInputRef = useRef(null);
   const missingEquipmentStateInputRef = useRef(null);
+
+  // Helper function to clear WBS data
+  const clearWBSData = () => {
+    setWbsOutput([]);
+    setWbsVisualization([]);
+    setEquipmentData([]);
+    setMissingEquipmentAnalysis({
+      newEquipment: [],
+      existingEquipment: [],
+      removedEquipment: []
+    });
+  };
 
   const categoryMapping = {
     '01': 'Preparations and set-up',
@@ -403,6 +416,7 @@ const WBSGenerator = () => {
 
       setProjectState(loadedState);
       setProjectName(loadedState.projectName);
+      setWbsVisualization(loadedState.wbsNodes);
       setWbsOutput(loadedState.wbsNodes);
       
     } catch (error) {
@@ -659,8 +673,16 @@ const WBSGenerator = () => {
       console.warn('WBS structure may have P6 import issues');
     }
 
-    // Set output to NEW nodes only for export
-    setWbsOutput(newNodes);
+    // Set visualization and export data based on mode
+    if (uploadMode === 'new') {
+      // For new projects, show and export all nodes
+      setWbsVisualization(allNodes);
+      setWbsOutput(allNodes);
+    } else {
+      // For continue projects, show all nodes but export only new nodes
+      setWbsVisualization(allNodes);
+      setWbsOutput(newNodes);
+    }
     
     const newProjectState = {
       projectName,
@@ -691,6 +713,7 @@ const WBSGenerator = () => {
     
     if (newCommissionedEquipment.length === 0) {
       alert('No new commissioned equipment found. All equipment already exists in the WBS structure.');
+      setWbsVisualization([]);
       setWbsOutput([]);
       return;
     }
@@ -793,6 +816,8 @@ const WBSGenerator = () => {
       });
     }
     
+    // For missing equipment, show and export only new nodes
+    setWbsVisualization(newWbsNodes);
     setWbsOutput(newWbsNodes);
     setProjectName(missingEquipmentConfig.existingProjectName || 'Missing Equipment Update');
   };
@@ -1086,7 +1111,10 @@ const WBSGenerator = () => {
 
         <div className="grid md:grid-cols-3 gap-4 mb-6">
           <button
-            onClick={() => setUploadMode('new')}
+            onClick={() => {
+              setUploadMode('new');
+              clearWBSData();
+            }}
             className={`p-6 rounded-lg border-2 transition-all ${
               uploadMode === 'new' ? 'border-opacity-100 shadow-lg' : 'border-opacity-30 hover:border-opacity-60'
             }`}
@@ -1101,7 +1129,10 @@ const WBSGenerator = () => {
           </button>
           
           <button
-            onClick={() => setUploadMode('continue')}
+            onClick={() => {
+              setUploadMode('continue');
+              clearWBSData();
+            }}
             className={`p-6 rounded-lg border-2 transition-all ${
               uploadMode === 'continue' ? 'border-opacity-100 shadow-lg' : 'border-opacity-30 hover:border-opacity-60'
             }`}
@@ -1116,7 +1147,10 @@ const WBSGenerator = () => {
           </button>
           
           <button
-            onClick={() => setUploadMode('missing')}
+            onClick={() => {
+              setUploadMode('missing');
+              clearWBSData();
+            }}
             className={`p-6 rounded-lg border-2 transition-all ${
               uploadMode === 'missing' ? 'border-opacity-100 shadow-lg' : 'border-opacity-30 hover:border-opacity-60'
             }`}
@@ -1125,6 +1159,10 @@ const WBSGenerator = () => {
               backgroundColor: uploadMode === 'missing' ? `${rjeColors.teal}20` : 'white'
             }}
           >
+            <Settings className="w-8 h-8 mx-auto mb-3" style={{ color: rjeColors.teal }} />
+            <div className="font-semibold text-lg mb-2">Add Missing Equipment</div>
+            <div className="text-sm text-gray-600">Insert individual equipment items</div>
+          </button>
             <Settings className="w-8 h-8 mx-auto mb-3" style={{ color: rjeColors.teal }} />
             <div className="font-semibold text-lg mb-2">Add Missing Equipment</div>
             <div className="text-sm text-gray-600">Insert individual equipment items</div>
@@ -1397,9 +1435,9 @@ const WBSGenerator = () => {
         </div>
       )}
 
-      {wbsOutput.length > 0 && (
+      {(wbsOutput.length > 0 || wbsVisualization.length > 0) && (
         <div className="space-y-6">
-          <WBSTreeVisualization wbsNodes={wbsOutput} />
+          <WBSTreeVisualization wbsNodes={wbsVisualization.length > 0 ? wbsVisualization : wbsOutput} />
           
           <div className="bg-white rounded-xl shadow-lg p-6">
             <h3 className="text-xl font-bold mb-4" style={{ color: rjeColors.darkBlue }}>
@@ -1552,10 +1590,22 @@ const WBSGenerator = () => {
 };
 
 // WBS Tree Visualization Component
-const WBSTreeVisualization = ({ wbsNodes }) => {
+const WBSTreeVisualization = ({ wbsNodes = [] }) => {
   const [expandedNodes, setExpandedNodes] = useState(new Set());
   const [showVisualization, setShowVisualization] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+
+  // Early return if no nodes
+  if (!wbsNodes || wbsNodes.length === 0) {
+    return (
+      <div className="bg-white rounded-xl shadow-lg p-6">
+        <h3 className="text-xl font-bold mb-4" style={{ color: rjeColors.darkBlue }}>
+          WBS Structure Visualization
+        </h3>
+        <p className="text-gray-500">No WBS structure to display</p>
+      </div>
+    );
+  }
 
   const buildTree = (nodes) => {
     const nodeMap = new Map();
