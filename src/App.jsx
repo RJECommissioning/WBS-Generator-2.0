@@ -546,7 +546,7 @@ const WBSGenerator = () => {
         wbs_code: subsystemId,
         parent_wbs_code: "1",
         wbs_name: subsystemLabel,
-        isNew: true
+        ...(uploadMode === 'continue' && { isNew: true })
       };
       
       allNodes.push(subsystemNode);
@@ -561,7 +561,7 @@ const WBSGenerator = () => {
         wbs_code: prerequisiteId,
         parent_wbs_code: "1.2",
         wbs_name: formattedSubsystemName,
-        isNew: true
+        ...(uploadMode === 'continue' && { isNew: true })
       };
       
       allNodes.push(prerequisiteNode);
@@ -577,7 +577,7 @@ const WBSGenerator = () => {
       subsystemStructure.forEach(node => {
         allNodes.push({
           ...node,
-          isNew: true
+          ...(uploadMode === 'continue' && { isNew: true })
         });
         newNodes.push(node);
       });
@@ -592,7 +592,7 @@ const WBSGenerator = () => {
         wbs_code: tbcId,
         parent_wbs_code: "1",
         wbs_name: "TBC - Equipment To Be Confirmed",
-        isNew: true
+        ...(uploadMode === 'continue' && { isNew: true })
       };
       
       allNodes.push(tbcNode);
@@ -607,7 +607,7 @@ const WBSGenerator = () => {
           wbs_code: `${tbcId}.${tbcCounter}`,
           parent_wbs_code: tbcId,
           wbs_name: `${item.equipmentNumber} | ${item.description}`,
-          isNew: true
+          ...(uploadMode === 'continue' && { isNew: true })
         };
         
         allNodes.push(tbcItemNode);
@@ -653,15 +653,25 @@ const WBSGenerator = () => {
     
     const newCommissionedEquipment = analysis.newEquipment.filter(item => item.commissioning === 'Y');
     
-    if (newCommissionedEquipment.length === 0) {
-      alert('No new commissioned equipment found. All equipment already exists in the WBS structure.');
+    if (newCommissionedEquipment.length === 0 && analysis.newEquipment.filter(item => item.commissioning === 'TBC').length === 0) {
+      alert('No new equipment found. All equipment already exists in the WBS structure.');
       setWbsVisualization([]);
       setWbsOutput([]);
       return;
     }
 
     const newWbsNodes = [];
+    const completeVisualizationNodes = [];
     
+    // Add all existing nodes to visualization (without isNew flag)
+    existingWbsNodes.forEach(node => {
+      completeVisualizationNodes.push({
+        ...node,
+        isExisting: true
+      });
+    });
+    
+    // Process new commissioned equipment
     newCommissionedEquipment.forEach(equipment => {
       const categoryCode = determineCategoryCode(equipment);
       const subsystemName = formatSubsystemName(equipment.subsystem);
@@ -695,6 +705,7 @@ const WBSGenerator = () => {
       };
       
       newWbsNodes.push(newEquipmentNode);
+      completeVisualizationNodes.push(newEquipmentNode);
       
       const childEquipment = analysis.newEquipment.filter(child => 
         child.parentEquipmentNumber === equipment.equipmentNumber && 
@@ -712,10 +723,12 @@ const WBSGenerator = () => {
         };
         
         newWbsNodes.push(childNode);
+        completeVisualizationNodes.push(childNode);
         childCounter++;
       });
     });
     
+    // Handle new TBC equipment
     const newTbcEquipment = analysis.newEquipment.filter(item => item.commissioning === 'TBC');
     if (newTbcEquipment.length > 0) {
       let tbcNode = existingWbsNodes.find(node => 
@@ -734,6 +747,7 @@ const WBSGenerator = () => {
         };
         
         newWbsNodes.push(tbcNode);
+        completeVisualizationNodes.push(tbcNode);
       }
       
       newTbcEquipment.forEach(item => {
@@ -746,10 +760,13 @@ const WBSGenerator = () => {
         };
         
         newWbsNodes.push(tbcItemNode);
+        completeVisualizationNodes.push(tbcItemNode);
       });
     }
     
-    setWbsVisualization(newWbsNodes);
+    // Set visualization to show complete structure with new items highlighted
+    setWbsVisualization(completeVisualizationNodes);
+    // Set output to only new items for export
     setWbsOutput(newWbsNodes);
     setProjectName(missingEquipmentConfig.existingProjectName || 'Missing Equipment Update');
   };
@@ -1438,39 +1455,92 @@ const WBSGenerator = () => {
               </div>
             )}
 
-            <div className="bg-gray-50 rounded-lg p-4 max-h-64 overflow-y-auto">
-              <div className="flex justify-between items-center mb-2">
-                <h4 className="font-semibold text-sm" style={{ color: rjeColors.darkBlue }}>
-                  {uploadMode === 'missing' 
-                    ? 'New Equipment Preview (P6 Format)' 
-                    : 'WBS Structure Preview (P6 Format)'
-                  }
-                </h4>
-                <span className="text-xs text-gray-500">
-                  {uploadMode === 'missing' 
-                    ? `New Items: ${wbsOutput.length}` 
-                    : `Hierarchical: ${wbsOutput[0]?.wbs_code} - ${wbsOutput[wbsOutput.length - 1]?.wbs_code}`
-                  }
-                </span>
-              </div>
-              <div className="text-sm font-mono">
-                {wbsOutput.slice(0, 20).map(node => (
-                  <div key={node.wbs_code} className="py-1">
-                    <span className="text-blue-600">{node.wbs_code}</span>
-                    <span className="text-gray-400"> | </span>
-                    <span className="text-green-600">{node.parent_wbs_code || 'ROOT'}</span>
-                    <span className="text-gray-400"> | </span>
-                    <span>{node.wbs_name}</span>
-                    {uploadMode === 'missing' && (
+            {/* Show different previews for continue vs missing modes */}
+            {uploadMode === 'continue' && (
+              <div className="bg-gray-50 rounded-lg p-4 max-h-64 overflow-y-auto">
+                <div className="flex justify-between items-center mb-2">
+                  <h4 className="font-semibold text-sm" style={{ color: rjeColors.darkBlue }}>
+                    New Items Preview (P6 Format)
+                  </h4>
+                  <span className="text-xs text-gray-500">
+                    New Items: {wbsOutput.length}
+                  </span>
+                </div>
+                <div className="text-sm font-mono">
+                  {wbsOutput.slice(0, 20).map(node => (
+                    <div key={node.wbs_code} className="py-1">
+                      <span className="text-blue-600">{node.wbs_code}</span>
+                      <span className="text-gray-400"> | </span>
+                      <span className="text-green-600">{node.parent_wbs_code || 'ROOT'}</span>
+                      <span className="text-gray-400"> | </span>
+                      <span>{node.wbs_name}</span>
                       <span className="text-green-500 ml-2">[NEW]</span>
-                    )}
-                  </div>
-                ))}
-                {wbsOutput.length > 20 && (
-                  <div className="text-gray-500 py-2">... and {wbsOutput.length - 20} more {uploadMode === 'missing' ? 'new items' : 'nodes'}</div>
-                )}
+                    </div>
+                  ))}
+                  {wbsOutput.length > 20 && (
+                    <div className="text-gray-500 py-2">... and {wbsOutput.length - 20} more new items</div>
+                  )}
+                </div>
               </div>
-            </div>
+            )}
+            
+            {/* Simplified equipment list for missing equipment mode */}
+            {uploadMode === 'missing' && (
+              <div className="bg-gray-50 rounded-lg p-4 max-h-64 overflow-y-auto">
+                <div className="flex justify-between items-center mb-2">
+                  <h4 className="font-semibold text-sm" style={{ color: rjeColors.darkBlue }}>
+                    New Equipment Preview
+                  </h4>
+                  <span className="text-xs text-gray-500">
+                    New Equipment: {missingEquipmentAnalysis.newEquipment.filter(item => item.commissioning === 'Y').length + missingEquipmentAnalysis.newEquipment.filter(item => item.commissioning === 'TBC').length}
+                  </span>
+                </div>
+                <div className="text-sm">
+                  {missingEquipmentAnalysis.newEquipment.filter(item => item.commissioning === 'Y' || item.commissioning === 'TBC').slice(0, 20).map((equipment, index) => (
+                    <div key={index} className="py-1 flex items-center">
+                      <span className="font-medium text-blue-600 mr-3">{equipment.equipmentNumber}</span>
+                      <span className="text-gray-700">{equipment.description}</span>
+                      {equipment.commissioning === 'TBC' && (
+                        <span className="text-xs px-2 py-1 ml-2 rounded" style={{ backgroundColor: rjeColors.blue, color: 'white' }}>
+                          TBC
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                  {missingEquipmentAnalysis.newEquipment.filter(item => item.commissioning === 'Y' || item.commissioning === 'TBC').length > 20 && (
+                    <div className="text-gray-500 py-2">... and {missingEquipmentAnalysis.newEquipment.filter(item => item.commissioning === 'Y' || item.commissioning === 'TBC').length - 20} more equipment items</div>
+                  )}
+                </div>
+              </div>
+            )}
+            
+            {/* Show complete structure preview only for new project mode */}
+            {uploadMode === 'new' && (
+              <div className="bg-gray-50 rounded-lg p-4 max-h-64 overflow-y-auto">
+                <div className="flex justify-between items-center mb-2">
+                  <h4 className="font-semibold text-sm" style={{ color: rjeColors.darkBlue }}>
+                    Complete WBS Structure Preview (P6 Format)
+                  </h4>
+                  <span className="text-xs text-gray-500">
+                    Total Nodes: {wbsOutput.length}
+                  </span>
+                </div>
+                <div className="text-sm font-mono">
+                  {wbsOutput.slice(0, 20).map(node => (
+                    <div key={node.wbs_code} className="py-1">
+                      <span className="text-blue-600">{node.wbs_code}</span>
+                      <span className="text-gray-400"> | </span>
+                      <span className="text-green-600">{node.parent_wbs_code || 'ROOT'}</span>
+                      <span className="text-gray-400"> | </span>
+                      <span>{node.wbs_name}</span>
+                    </div>
+                  ))}
+                  {wbsOutput.length > 20 && (
+                    <div className="text-gray-500 py-2">... and {wbsOutput.length - 20} more nodes</div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -1607,6 +1677,11 @@ const WBSTreeVisualization = ({ wbsNodes = [] }) => {
                     NEW
                   </span>
                 )}
+                {node.isExisting && (
+                  <span className="text-xs px-2 py-1 ml-2 rounded" style={{ backgroundColor: rjeColors.teal, color: 'white' }}>
+                    EXISTING
+                  </span>
+                )}
               </div>
             </div>
             
@@ -1718,6 +1793,33 @@ const WBSTreeVisualization = ({ wbsNodes = [] }) => {
               <div className="flex items-center">S | Subsystems</div>
               <div className="flex items-center">TBC | To Be Confirmed</div>
             </div>
+            
+            {/* Show label explanation for continue and missing modes */}
+            {(wbsNodes.some(node => node.isNew) || wbsNodes.some(node => node.isExisting)) && (
+              <div className="mt-4 pt-3 border-t border-gray-200">
+                <h4 className="font-semibold mb-2" style={{ color: rjeColors.darkBlue }}>
+                  Item Status Legend
+                </h4>
+                <div className="flex flex-wrap gap-4 text-sm">
+                  {wbsNodes.some(node => node.isNew) && (
+                    <div className="flex items-center">
+                      <span className="text-xs px-2 py-1 rounded mr-2" style={{ backgroundColor: rjeColors.mediumGreen, color: 'white' }}>
+                        NEW
+                      </span>
+                      <span>Items being added to existing WBS</span>
+                    </div>
+                  )}
+                  {wbsNodes.some(node => node.isExisting) && (
+                    <div className="flex items-center">
+                      <span className="text-xs px-2 py-1 rounded mr-2" style={{ backgroundColor: rjeColors.teal, color: 'white' }}>
+                        EXISTING
+                      </span>
+                      <span>Items already in WBS structure</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </>
       )}
