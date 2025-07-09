@@ -1,7 +1,6 @@
 import React, { useState, useRef, createContext, useContext } from 'react';
 import { Upload, Download, Settings, Plus, FileText, Zap, ChevronRight, ChevronDown, Eye, EyeOff } from 'lucide-react';
 
-// RJE Brand Colors
 const rjeColors = {
   lightGreen: '#B8D582',
   mediumGreen: '#7DB544',
@@ -11,13 +10,11 @@ const rjeColors = {
   darkBlue: '#0F5A8F'
 };
 
-// Context for project state management
 const ProjectContext = createContext({
   projectState: null,
   setProjectState: () => {}
 });
 
-// Main App Component
 const WBSGeneratorApp = () => {
   const [projectState, setProjectState] = useState(null);
 
@@ -25,7 +22,6 @@ const WBSGeneratorApp = () => {
     <ProjectContext.Provider value={{ projectState, setProjectState }}>
       <div className="min-h-screen" style={{ background: `linear-gradient(135deg, ${rjeColors.lightGreen}, ${rjeColors.blue})` }}>
         <div className="container mx-auto px-4 py-8">
-          {/* Header */}
           <div 
             className="rounded-2xl shadow-2xl mb-8 text-white"
             style={{ background: `linear-gradient(135deg, ${rjeColors.darkBlue}, ${rjeColors.teal})` }}
@@ -36,8 +32,6 @@ const WBSGeneratorApp = () => {
               <p className="text-sm mt-2 opacity-75">Modern Architecture (v4.0) - Production Ready</p>
             </div>
           </div>
-
-          {/* Main Generator Interface */}
           <WBSGenerator />
         </div>
       </div>
@@ -45,7 +39,6 @@ const WBSGeneratorApp = () => {
   );
 };
 
-// Main WBS Generator Component
 const WBSGenerator = () => {
   const { projectState, setProjectState } = useContext(ProjectContext);
   const [uploadMode, setUploadMode] = useState('new');
@@ -68,7 +61,6 @@ const WBSGenerator = () => {
   const projectStateInputRef = useRef(null);
   const missingEquipmentStateInputRef = useRef(null);
 
-  // Helper function to clear WBS data
   const clearWBSData = () => {
     setWbsOutput([]);
     setWbsVisualization([]);
@@ -94,13 +86,11 @@ const WBSGenerator = () => {
     '99': 'Unrecognised Equipment'
   };
 
-  // Helper function to extract equipment numbers from existing WBS structure
   const extractEquipmentNumbers = (wbsNodes) => {
     const equipmentNumbers = new Set();
     wbsNodes.forEach(node => {
       if (node.wbs_name.includes('|')) {
         const equipmentNumber = node.wbs_name.split('|')[0].trim();
-        // Filter out non-equipment nodes (categories, subsystems, etc.)
         if (equipmentNumber && 
             !equipmentNumber.startsWith('S') && 
             !equipmentNumber.startsWith('M') && 
@@ -118,7 +108,6 @@ const WBSGenerator = () => {
     return Array.from(equipmentNumbers);
   };
 
-  // Helper function to compare equipment lists and identify changes
   const compareEquipmentLists = (existingEquipment, newEquipmentList) => {
     const existingSet = new Set(existingEquipment);
     const newSet = new Set(newEquipmentList.map(item => item.equipmentNumber));
@@ -134,7 +123,6 @@ const WBSGenerator = () => {
     };
   };
 
-  // Helper function to find next available WBS code in a category
   const findNextWBSCode = (parentWbsCode, existingNodes) => {
     const childNodes = existingNodes.filter(node => 
       node.parent_wbs_code === parentWbsCode
@@ -152,12 +140,10 @@ const WBSGenerator = () => {
     return `${parentWbsCode}.${maxChildNumber + 1}`;
   };
 
-  // Helper function to determine category code for equipment
   const determineCategoryCode = (equipment) => {
     const equipmentNumber = equipment.equipmentNumber.toUpperCase();
     const plu = equipment.plu ? equipment.plu.toUpperCase() : '';
     
-    // Category mapping logic (same as in generateModernStructure)
     const categoryPatterns = {
       '02': ['+UH', 'UH'],
       '03': ['+WA', 'WA'],
@@ -172,7 +158,6 @@ const WBSGenerator = () => {
     for (const [categoryCode, patterns] of Object.entries(categoryPatterns)) {
       for (const pattern of patterns) {
         if (categoryCode === '07') {
-          // Special handling for earthing equipment
           if (pattern === 'E' && equipmentNumber.startsWith('E') && 
               !equipmentNumber.startsWith('+') && !equipmentNumber.startsWith('EB') && 
               !equipmentNumber.startsWith('EEP') && !equipmentNumber.startsWith('ESS')) {
@@ -202,10 +187,9 @@ const WBSGenerator = () => {
       }
     }
     
-    return '99'; // Unrecognised equipment
+    return '99';
   };
 
-  // Helper function to format subsystem name (same as in generateWBS)
   const formatSubsystemName = (subsystem) => {
     const zMatch = subsystem.match(/Z\d+/i);
     if (zMatch) {
@@ -227,7 +211,6 @@ const WBSGenerator = () => {
       let equipmentList = [];
       
       if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
-        // Handle Excel files
         const XLSX = await import('xlsx');
         const arrayBuffer = await file.arrayBuffer();
         const workbook = XLSX.read(arrayBuffer, { cellDates: true });
@@ -312,8 +295,6 @@ const WBSGenerator = () => {
         throw new Error('Unsupported file format. Please use .xlsx, .xls, or .csv files.');
       }
       
-      console.log(`Loaded ${equipmentList.length} equipment items`);
-      
       if (equipmentList.length === 0) {
         alert('No valid equipment found. Please ensure your file contains the required columns: Subsystem, Parent Equipment Number, Equipment Number, Description, Commissioning (Y/N)');
         return;
@@ -321,7 +302,6 @@ const WBSGenerator = () => {
       
       setEquipmentData(equipmentList);
       
-      // Handle different upload modes
       if (uploadMode === 'missing') {
         generateMissingEquipmentWBS(equipmentList);
       } else {
@@ -387,7 +367,6 @@ const WBSGenerator = () => {
         projectName = rootNode.wbs_name;
       }
 
-      // Find the highest subsystem number to continue from
       const subsystemNodes = wbsData.filter(node => 
         node.wbs_code.startsWith('1.') && 
         node.wbs_code.split('.').length === 2 &&
@@ -474,7 +453,6 @@ const WBSGenerator = () => {
         projectName = rootNode.wbs_name;
       }
 
-      // Store the existing WBS structure for missing equipment analysis
       setMissingEquipmentConfig(prev => ({
         ...prev,
         existingWbsNodes: wbsData,
@@ -488,15 +466,13 @@ const WBSGenerator = () => {
   };
 
   const generateWBS = (data) => {
-    const allNodes = []; // For complete structure (preview)
-    const newNodes = []; // For export (new items only)
+    const allNodes = [];
+    const newNodes = [];
     let subsystemCounter = projectState?.lastWbsCode ? projectState.lastWbsCode : 3;
     let tbcCounter = 1;
 
-    // Calculate how many subsystems already exist (for proper S-numbering)
     const existingSubsystemCount = projectState?.subsystems?.length || 0;
 
-    // Always create the base structure first
     const projectId = "1";
     allNodes.push({
       wbs_code: projectId,
@@ -504,7 +480,6 @@ const WBSGenerator = () => {
       wbs_name: projectName
     });
 
-    // M | Milestones
     const milestonesId = "1.1";
     allNodes.push({
       wbs_code: milestonesId,
@@ -512,7 +487,6 @@ const WBSGenerator = () => {
       wbs_name: "M | Milestones"
     });
 
-    // P | Pre-requisites
     const prerequisitesId = "1.2";
     allNodes.push({
       wbs_code: prerequisitesId,
@@ -520,7 +494,6 @@ const WBSGenerator = () => {
       wbs_name: "P | Pre-requisites"
     });
 
-    // If continuing a project, add existing subsystem nodes (for preview only)
     if (projectState?.wbsNodes && projectState.wbsNodes.length > 0) {
       const existingNodes = projectState.wbsNodes.filter(node => 
         node.wbs_code !== "1" && 
@@ -533,29 +506,14 @@ const WBSGenerator = () => {
         if (!allNodes.some(existing => existing.wbs_code === node.wbs_code)) {
           allNodes.push({
             ...node,
-            isExisting: true // Mark as existing for preview
+            isExisting: true
           });
         }
       });
     }
 
-    // Process subsystems with Z-code ordering
     const rawSubsystems = [...new Set(data.filter(item => item.commissioning === 'Y').map(item => item.subsystem))];
     
-    // Function to extract Z-code from subsystem name and format it properly
-    const formatSubsystemName = (subsystem) => {
-      const zMatch = subsystem.match(/Z\d+/i);
-      if (zMatch) {
-        const zCode = zMatch[0].toUpperCase();
-        let cleanName = subsystem.replace(/[-\s]*\+?Z\d+[-\s]*/i, '').trim();
-        cleanName = cleanName.replace(/[-\s\+]+$/, '').trim();
-        cleanName = cleanName.replace(/^[-\s\+]+/, '').trim();
-        return `+${zCode} - ${cleanName}`;
-      }
-      return subsystem;
-    };
-    
-    // Sort subsystems by Z-code with Substation always last
     const subsystems = rawSubsystems.sort((a, b) => {
       const aFormatted = formatSubsystemName(a);
       const bFormatted = formatSubsystemName(b);
@@ -579,7 +537,6 @@ const WBSGenerator = () => {
       return aFormatted.localeCompare(bFormatted);
     });
     
-    // Add new subsystems
     subsystems.forEach((subsystem, index) => {
       const formattedSubsystemName = formatSubsystemName(subsystem);
       const subsystemId = `1.${subsystemCounter}`;
@@ -599,7 +556,6 @@ const WBSGenerator = () => {
         wbs_name: subsystemLabel
       });
 
-      // Add to prerequisites
       const prerequisiteId = `1.2.${existingSubsystemCount + index + 1}`;
       const prerequisiteNode = {
         wbs_code: prerequisiteId,
@@ -615,11 +571,9 @@ const WBSGenerator = () => {
         wbs_name: formattedSubsystemName
       });
 
-      // Generate structure for this subsystem
       const subsystemStructure = [];
       generateModernStructure(subsystemStructure, subsystemId, subsystem, data);
       
-      // Add to both complete and new nodes
       subsystemStructure.forEach(node => {
         allNodes.push({
           ...node,
@@ -631,7 +585,6 @@ const WBSGenerator = () => {
       subsystemCounter++;
     });
 
-    // Handle TBC equipment
     const tbcEquipment = data.filter(item => item.commissioning === 'TBC');
     if (tbcEquipment.length > 0) {
       const tbcId = `1.${subsystemCounter}`;
@@ -667,19 +620,10 @@ const WBSGenerator = () => {
       });
     }
 
-    // Validate the complete structure
-    const isValidP6Structure = validateP6Structure(allNodes);
-    if (!isValidP6Structure) {
-      console.warn('WBS structure may have P6 import issues');
-    }
-
-    // Set visualization and export data based on mode
     if (uploadMode === 'new') {
-      // For new projects, show and export all nodes
       setWbsVisualization(allNodes);
       setWbsOutput(allNodes);
     } else {
-      // For continue projects, show all nodes but export only new nodes
       setWbsVisualization(allNodes);
       setWbsOutput(newNodes);
     }
@@ -688,7 +632,7 @@ const WBSGenerator = () => {
       projectName,
       lastWbsCode: subsystemCounter,
       subsystems: [...(projectState?.subsystems || []), ...subsystems.map(formatSubsystemName)],
-      wbsNodes: allNodes, // Store complete structure for future continues
+      wbsNodes: allNodes,
       timestamp: new Date().toISOString()
     };
     
@@ -704,11 +648,9 @@ const WBSGenerator = () => {
     const existingWbsNodes = missingEquipmentConfig.existingWbsNodes;
     const existingEquipmentNumbers = extractEquipmentNumbers(existingWbsNodes);
     
-    // Compare equipment lists
     const analysis = compareEquipmentLists(existingEquipmentNumbers, newEquipmentList);
     setMissingEquipmentAnalysis(analysis);
     
-    // Only process new equipment (commissioned as Y)
     const newCommissionedEquipment = analysis.newEquipment.filter(item => item.commissioning === 'Y');
     
     if (newCommissionedEquipment.length === 0) {
@@ -718,15 +660,12 @@ const WBSGenerator = () => {
       return;
     }
 
-    // Generate WBS codes for new equipment only
     const newWbsNodes = [];
     
-    // Process each new equipment item
     newCommissionedEquipment.forEach(equipment => {
       const categoryCode = determineCategoryCode(equipment);
       const subsystemName = formatSubsystemName(equipment.subsystem);
       
-      // Find the existing subsystem and category nodes
       const existingSubsystemNode = existingWbsNodes.find(node => 
         node.wbs_name.includes(subsystemName) && node.wbs_name.startsWith('S')
       );
@@ -746,7 +685,6 @@ const WBSGenerator = () => {
         return;
       }
       
-      // Generate new WBS code for this equipment
       const newWbsCode = findNextWBSCode(existingCategoryNode.wbs_code, [...existingWbsNodes, ...newWbsNodes]);
       
       const newEquipmentNode = {
@@ -758,7 +696,6 @@ const WBSGenerator = () => {
       
       newWbsNodes.push(newEquipmentNode);
       
-      // Handle child equipment
       const childEquipment = analysis.newEquipment.filter(child => 
         child.parentEquipmentNumber === equipment.equipmentNumber && 
         child.commissioning === 'Y'
@@ -779,16 +716,13 @@ const WBSGenerator = () => {
       });
     });
     
-    // Handle TBC equipment
     const newTbcEquipment = analysis.newEquipment.filter(item => item.commissioning === 'TBC');
     if (newTbcEquipment.length > 0) {
-      // Find existing TBC section or create new one
       let tbcNode = existingWbsNodes.find(node => 
         node.wbs_name.includes('TBC - Equipment To Be Confirmed')
       );
       
       if (!tbcNode) {
-        // Create new TBC section
         const projectNode = existingWbsNodes.find(node => node.parent_wbs_code === null);
         const nextSubsystemCode = findNextWBSCode(projectNode.wbs_code, [...existingWbsNodes, ...newWbsNodes]);
         
@@ -802,7 +736,6 @@ const WBSGenerator = () => {
         newWbsNodes.push(tbcNode);
       }
       
-      // Add new TBC equipment
       newTbcEquipment.forEach(item => {
         const tbcItemCode = findNextWBSCode(tbcNode.wbs_code, [...existingWbsNodes, ...newWbsNodes]);
         const tbcItemNode = {
@@ -816,45 +749,14 @@ const WBSGenerator = () => {
       });
     }
     
-    // For missing equipment, show and export only new nodes
     setWbsVisualization(newWbsNodes);
     setWbsOutput(newWbsNodes);
     setProjectName(missingEquipmentConfig.existingProjectName || 'Missing Equipment Update');
   };
 
-  const validateP6Structure = (nodes) => {
-    const rootNodes = nodes.filter(n => n.parent_wbs_code === null);
-    if (rootNodes.length !== 1) {
-      console.warn(`P6 Warning: Expected 1 root node, found: ${rootNodes.length}`);
-      return false;
-    }
-
-    const codeSet = new Set(nodes.map(n => n.wbs_code));
-    for (const node of nodes) {
-      if (node.parent_wbs_code !== null && !codeSet.has(node.parent_wbs_code)) {
-        console.warn(`P6 Warning: Parent WBS code ${node.parent_wbs_code} not found for node ${node.wbs_code}`);
-        return false;
-      }
-    }
-
-    // Check hierarchical structure
-    for (const node of nodes) {
-      if (node.parent_wbs_code !== null) {
-        const parentNode = nodes.find(n => n.wbs_code === node.parent_wbs_code);
-        if (!parentNode) {
-          console.warn(`P6 Warning: Parent node ${node.parent_wbs_code} not found for ${node.wbs_code}`);
-          return false;
-        }
-      }
-    }
-
-    return true;
-  };
-
   const generateModernStructure = (nodes, subsystemId, subsystem, data) => {
     let categoryCounter = 1;
     
-    // Process categories in proper sequential order: 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 99
     const orderedCategoryKeys = ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '99'];
     
     orderedCategoryKeys.forEach(number => {
@@ -866,7 +768,6 @@ const WBSGenerator = () => {
         wbs_name: `${number} | ${name}`
       });
 
-      // Special handling for 01 | Preparations and set-up - always create these 3 items
       if (number === '01') {
         let prepCounter = 1;
         ['Test bay', 'Panel Shop', 'Pad'].forEach(item => {
@@ -881,7 +782,7 @@ const WBSGenerator = () => {
 
       let equipmentPatterns = [];
       switch (number) {
-        case '01': equipmentPatterns = []; break; // Handled above
+        case '01': equipmentPatterns = []; break;
         case '02': equipmentPatterns = ['+UH', 'UH']; break;
         case '03': equipmentPatterns = ['+WA', 'WA']; break;
         case '04': equipmentPatterns = ['+WC', 'WC']; break;
@@ -902,7 +803,6 @@ const WBSGenerator = () => {
              const equipmentUpper = item.equipmentNumber.toUpperCase();
              const patternUpper = pattern.toUpperCase();
              
-             // Special handling for earthing equipment (category 07)
              if (number === '07') {
                if (pattern === 'E' && equipmentUpper.startsWith('E') && 
                    !equipmentUpper.startsWith('+') && !equipmentUpper.startsWith('EB') && 
@@ -940,15 +840,9 @@ const WBSGenerator = () => {
 
         if (number === '99') {
           const allOtherPatterns = [
-            '+UH', 'UH',
-            '+WA', 'WA',
-            '+WC', 'WC',
-            'T', 'NET', 'TA', 'NER',
-            '+GB', 'GB', 'BAN',
-            'E', 'EB', 'EEP', 'MEB',
-            '+HN', 'HN', 'PC', 'FM', 'FIP', 'LT', 'LTP', 'LCT', 'GPO', 'VDO', 'ACS', 'ACR', 'CTV', 'HRN', 'EHT', 'HTP', 'MCP', 'DET', 'ASD', 'IND', 'BEA', 'Fire', 'ESS',
-            'Interface', 'Testing',
-            '+CA', 'CA', 'PSU', 'UPS', 'BCR', 'G', 'BSG', 'GTG', 'GT', 'GC', 'WTG', 'SVC', 'HFT', 'RA', 'R', 'FC', 'CP', 'LCS', 'IOP', 'ITP', 'IJB', 'CPU', 'X', 'XB', 'XD', 'H', 'D', 'CB', 'GCB', 'SA', 'LSW', 'MCC', 'DOL', 'VFD', 'ATS', 'MTS', 'Q', 'K'
+            '+UH', 'UH', '+WA', 'WA', '+WC', 'WC', 'T', 'NET', 'TA', 'NER',
+            '+GB', 'GB', 'BAN', 'E', 'EB', 'EEP', 'MEB', '+HN', 'HN', 'PC', 'FM', 'FIP', 'LT', 'LTP', 'LCT', 'GPO', 'VDO', 'ACS', 'ACR', 'CTV', 'HRN', 'EHT', 'HTP', 'MCP', 'DET', 'ASD', 'IND', 'BEA', 'Fire', 'ESS',
+            'Interface', 'Testing', '+CA', 'CA', 'PSU', 'UPS', 'BCR', 'G', 'BSG', 'GTG', 'GT', 'GC', 'WTG', 'SVC', 'HFT', 'RA', 'R', 'FC', 'CP', 'LCS', 'IOP', 'ITP', 'IJB', 'CPU', 'X', 'XB', 'XD', 'H', 'D', 'CB', 'GCB', 'SA', 'LSW', 'MCC', 'DOL', 'VFD', 'ATS', 'MTS', 'Q', 'K'
           ];
 
           const unrecognisedEquipment = data.filter(item => 
@@ -1078,7 +972,6 @@ const WBSGenerator = () => {
     const link = document.createElement('a');
     link.href = url;
     
-    // Use different naming convention for missing equipment
     if (uploadMode === 'missing') {
       link.download = `${projectName}_NEW_Equipment_P6_Import.csv`;
     } else {
@@ -1159,10 +1052,6 @@ const WBSGenerator = () => {
               backgroundColor: uploadMode === 'missing' ? `${rjeColors.teal}20` : 'white'
             }}
           >
-            <Settings className="w-8 h-8 mx-auto mb-3" style={{ color: rjeColors.teal }} />
-            <div className="font-semibold text-lg mb-2">Add Missing Equipment</div>
-            <div className="text-sm text-gray-600">Insert individual equipment items</div>
-          </button>
             <Settings className="w-8 h-8 mx-auto mb-3" style={{ color: rjeColors.teal }} />
             <div className="font-semibold text-lg mb-2">Add Missing Equipment</div>
             <div className="text-sm text-gray-600">Insert individual equipment items</div>
@@ -1482,7 +1371,7 @@ const WBSGenerator = () => {
               <div className="mb-4 p-3 rounded-lg" style={{ backgroundColor: rjeColors.lightGreen + '15' }}>
                 <p className="text-sm text-gray-700">
                   <strong>💡 P6 Import Ready:</strong> Use the <strong>WBS CSV export</strong> for Primavera P6 import or to continue this project later. 
-                  The CSV file uses tab-separated format optimized for P6 compatibility with hierarchical decimal numbering.
+                  The CSV file uses comma-separated format optimized for P6 compatibility with hierarchical decimal numbering.
                 </p>
               </div>
             )}
@@ -1589,13 +1478,11 @@ const WBSGenerator = () => {
   );
 };
 
-// WBS Tree Visualization Component
 const WBSTreeVisualization = ({ wbsNodes = [] }) => {
   const [expandedNodes, setExpandedNodes] = useState(new Set());
   const [showVisualization, setShowVisualization] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
 
-  // Early return if no nodes
   if (!wbsNodes || wbsNodes.length === 0) {
     return (
       <div className="bg-white rounded-xl shadow-lg p-6">
