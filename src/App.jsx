@@ -1,5 +1,5 @@
 import React, { useState, useRef, createContext, useContext } from 'react';
-import { Upload, Download, Settings, Plus, FileText, Zap, ChevronRight, ChevronDown, Eye, EyeOff, Info } from 'lucide-react';
+import { Upload, Download, Settings, Plus, FileText, Zap, ChevronRight, ChevronDown, Eye, EyeOff } from 'lucide-react';
 
 // RJE Brand Colors
 const rjeColors = {
@@ -50,17 +50,22 @@ const WBSGenerator = () => {
   const { projectState, setProjectState } = useContext(ProjectContext);
   const [uploadMode, setUploadMode] = useState('new');
   const [equipmentData, setEquipmentData] = useState([]);
-  const [wbsOutput, setWbsOutput] = useState([]); // For export (new items only)
-  const [wbsVisualization, setWbsVisualization] = useState([]); // For visualization (complete structure)
+  const [wbsOutput, setWbsOutput] = useState([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [projectName, setProjectName] = useState('Sample Project');
   const [missingEquipmentConfig, setMissingEquipmentConfig] = useState({
-    parentWbsCode: '',
-    startingWbsCode: ''
+    existingWbsNodes: null,
+    existingProjectName: null
   });
-  const [isContinueMode, setIsContinueMode] = useState(false); // Track if we're in continue project mode
+  const [missingEquipmentAnalysis, setMissingEquipmentAnalysis] = useState({
+    newEquipment: [],
+    existingEquipment: [],
+    removedEquipment: []
+  });
+  const [showRemovedEquipment, setShowRemovedEquipment] = useState(false);
   const fileInputRef = useRef(null);
   const projectStateInputRef = useRef(null);
+  const missingEquipmentStateInputRef = useRef(null);
 
   const categoryMapping = {
     '01': 'Preparations and set-up',
@@ -74,6 +79,130 @@ const WBSGenerator = () => {
     '09': 'Interface Testing',
     '10': 'Ancillary Systems',
     '99': 'Unrecognised Equipment'
+  };
+
+  // Helper function to extract equipment numbers from existing WBS structure
+  const extractEquipmentNumbers = (wbsNodes) => {
+    const equipmentNumbers = new Set();
+    wbsNodes.forEach(node => {
+      if (node.wbs_name.includes('|')) {
+        const equipmentNumber = node.wbs_name.split('|')[0].trim();
+        // Filter out non-equipment nodes (categories, subsystems, etc.)
+        if (equipmentNumber && 
+            !equipmentNumber.startsWith('S') && 
+            !equipmentNumber.startsWith('M') && 
+            !equipmentNumber.startsWith('P') && 
+            !equipmentNumber.match(/^\d+$/) &&
+            !equipmentNumber.includes('Phase') &&
+            !equipmentNumber.includes('TBC') &&
+            !equipmentNumber.includes('Test') &&
+            !equipmentNumber.includes('Panel') &&
+            !equipmentNumber.includes('Pad')) {
+          equipmentNumbers.add(equipmentNumber);
+        }
+      }
+    });
+    return Array.from(equipmentNumbers);
+  };
+
+  // Helper function to compare equipment lists and identify changes
+  const compareEquipmentLists = (existingEquipment, newEquipmentList) => {
+    const existingSet = new Set(existingEquipment);
+    const newSet = new Set(newEquipmentList.map(item => item.equipmentNumber));
+    
+    const newEquipment = newEquipmentList.filter(item => !existingSet.has(item.equipmentNumber));
+    const existingEquipmentInNew = newEquipmentList.filter(item => existingSet.has(item.equipmentNumber));
+    const removedEquipment = existingEquipment.filter(equipNum => !newSet.has(equipNum));
+    
+    return {
+      newEquipment,
+      existingEquipment: existingEquipmentInNew,
+      removedEquipment
+    };
+  };
+
+  // Helper function to find next available WBS code in a category
+  const findNextWBSCode = (parentWbsCode, existingNodes) => {
+    const childNodes = existingNodes.filter(node => 
+      node.parent_wbs_code === parentWbsCode
+    );
+    
+    if (childNodes.length === 0) {
+      return `${parentWbsCode}.1`;
+    }
+    
+    const maxChildNumber = Math.max(...childNodes.map(node => {
+      const parts = node.wbs_code.split('.');
+      return parseInt(parts[parts.length - 1]) || 0;
+    }));
+    
+    return `${parentWbsCode}.${maxChildNumber + 1}`;
+  };
+
+  // Helper function to determine category code for equipment
+  const determineCategoryCode = (equipment) => {
+    const equipmentNumber = equipment.equipmentNumber.toUpperCase();
+    const plu = equipment.plu ? equipment.plu.toUpperCase() : '';
+    
+    // Category mapping logic (same as in generateModernStructure)
+    const categoryPatterns = {
+      '02': ['+UH', 'UH'],
+      '03': ['+WA', 'WA'],
+      '04': ['+WC', 'WC'],
+      '05': ['T', 'NET', 'TA', 'NER'],
+      '06': ['+GB', 'GB', 'BAN'],
+      '07': ['E', 'EB', 'EEP', 'MEB'],
+      '08': ['+HN', 'HN', 'PC', 'FM', 'FIP', 'LT', 'LTP', 'LCT', 'GPO', 'VDO', 'ACS', 'ACR', 'CTV', 'HRN', 'EHT', 'HTP', 'MCP', 'DET', 'ASD', 'IND', 'BEA', 'Fire', 'ESS'],
+      '10': ['+CA', 'CA', 'PSU', 'UPS', 'BCR', 'G', 'BSG', 'GTG', 'GT', 'GC', 'WTG', 'SVC', 'HFT', 'RA', 'R', 'FC', 'CP', 'LCS', 'IOP', 'ITP', 'IJB', 'CPU', 'X', 'XB', 'XD', 'H', 'D', 'CB', 'GCB', 'SA', 'LSW', 'MCC', 'DOL', 'VFD', 'ATS', 'MTS', 'Q', 'K']
+    };
+    
+    for (const [categoryCode, patterns] of Object.entries(categoryPatterns)) {
+      for (const pattern of patterns) {
+        if (categoryCode === '07') {
+          // Special handling for earthing equipment
+          if (pattern === 'E' && equipmentNumber.startsWith('E') && 
+              !equipmentNumber.startsWith('+') && !equipmentNumber.startsWith('EB') && 
+              !equipmentNumber.startsWith('EEP') && !equipmentNumber.startsWith('ESS')) {
+            const charAfterE = equipmentNumber.charAt(1);
+            if (charAfterE >= '0' && charAfterE <= '9') return categoryCode;
+          }
+          if (pattern === 'EB' && equipmentNumber.startsWith('EB')) {
+            const charAfterEB = equipmentNumber.charAt(2);
+            if (charAfterEB >= '0' && charAfterEB <= '9') return categoryCode;
+          }
+          if (pattern === 'EEP' && equipmentNumber.startsWith('EEP')) {
+            const charAfterEEP = equipmentNumber.charAt(3);
+            if (charAfterEEP >= '0' && charAfterEEP <= '9') return categoryCode;
+          }
+          if (pattern === 'MEB' && equipmentNumber.startsWith('MEB')) {
+            return categoryCode;
+          }
+        } else {
+          if (pattern.startsWith('+')) {
+            if (equipmentNumber.startsWith(pattern)) return categoryCode;
+          } else if (pattern.length <= 3 && pattern !== 'Fire' && pattern !== 'ESS') {
+            if (equipmentNumber.startsWith(pattern) && !equipmentNumber.startsWith('+')) return categoryCode;
+          } else {
+            if (equipmentNumber.includes(pattern) || plu.includes(pattern)) return categoryCode;
+          }
+        }
+      }
+    }
+    
+    return '99'; // Unrecognised equipment
+  };
+
+  // Helper function to format subsystem name (same as in generateWBS)
+  const formatSubsystemName = (subsystem) => {
+    const zMatch = subsystem.match(/Z\d+/i);
+    if (zMatch) {
+      const zCode = zMatch[0].toUpperCase();
+      let cleanName = subsystem.replace(/[-\s]*\+?Z\d+[-\s]*/i, '').trim();
+      cleanName = cleanName.replace(/[-\s\+]+$/, '').trim();
+      cleanName = cleanName.replace(/^[-\s\+]+/, '').trim();
+      return `+${zCode} - ${cleanName}`;
+    }
+    return subsystem;
   };
 
   const handleFileUpload = async (event) => {
@@ -178,7 +307,13 @@ const WBSGenerator = () => {
       }
       
       setEquipmentData(equipmentList);
-      generateWBS(equipmentList);
+      
+      // Handle different upload modes
+      if (uploadMode === 'missing') {
+        generateMissingEquipmentWBS(equipmentList);
+      } else {
+        generateWBS(equipmentList);
+      }
       
     } catch (error) {
       console.error('File processing error:', error);
@@ -234,8 +369,7 @@ const WBSGenerator = () => {
         throw new Error('Unsupported file format. Please use .xlsx, .xls, or .csv files.');
       }
 
-      // Find root node for project name
-      const rootNode = wbsData.find(node => node.parent_wbs_code === null || node.parent_wbs_code === '');
+      const rootNode = wbsData.find(node => node.parent_wbs_code === null);
       if (rootNode) {
         projectName = rootNode.wbs_name;
       }
@@ -254,7 +388,6 @@ const WBSGenerator = () => {
         lastWbsCode = Math.max(...subsystemNumbers) + 1;
       }
 
-      // Extract existing subsystems
       subsystems = wbsData
         .filter(node => node.wbs_name.startsWith('S') && node.wbs_name.includes('|'))
         .map(node => node.wbs_name.split('|')[1]?.trim() || '')
@@ -270,16 +403,73 @@ const WBSGenerator = () => {
 
       setProjectState(loadedState);
       setProjectName(loadedState.projectName);
-      
-      // Set visualization to show existing structure
-      setWbsVisualization(loadedState.wbsNodes);
-      
-      // Clear export output until new equipment is added
-      setWbsOutput([]);
+      setWbsOutput(loadedState.wbsNodes);
       
     } catch (error) {
       console.error('Project state loading error:', error);
       alert('Error loading project state file. Please ensure the file has columns: wbs_code, parent_wbs_code, wbs_name');
+    }
+  };
+
+  const handleMissingEquipmentStateUpload = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      let wbsData = [];
+      let projectName = 'Missing Equipment Update';
+
+      if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
+        const XLSX = await import('xlsx');
+        const arrayBuffer = await file.arrayBuffer();
+        const workbook = XLSX.read(arrayBuffer, { cellDates: true });
+        
+        const sheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[sheetName];
+        const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+        
+        const headerRow = jsonData[0];
+        const dataRows = jsonData.slice(1);
+        
+        wbsData = dataRows.map(row => ({
+          wbs_code: row[0]?.toString() || '',
+          parent_wbs_code: row[1] ? row[1].toString() : null,
+          wbs_name: row[2] || ''
+        })).filter(item => item.wbs_code && item.wbs_name);
+        
+      } else if (file.name.endsWith('.csv')) {
+        const text = await file.text();
+        const lines = text.split('\n');
+        const delimiter = lines[0].includes('\t') ? '\t' : ',';
+        const headers = lines[0].split(delimiter).map(h => h.trim().replace(/"/g, ''));
+        
+        wbsData = lines.slice(1).map(line => {
+          const values = line.split(delimiter).map(v => v.trim().replace(/"/g, ''));
+          return {
+            wbs_code: values[0] || '',
+            parent_wbs_code: values[1] || null,
+            wbs_name: values[2] || ''
+          };
+        }).filter(item => item.wbs_code && item.wbs_name);
+      } else {
+        throw new Error('Unsupported file format. Please use .xlsx, .xls, or .csv files.');
+      }
+
+      const rootNode = wbsData.find(node => node.parent_wbs_code === null);
+      if (rootNode) {
+        projectName = rootNode.wbs_name;
+      }
+
+      // Store the existing WBS structure for missing equipment analysis
+      setMissingEquipmentConfig(prev => ({
+        ...prev,
+        existingWbsNodes: wbsData,
+        existingProjectName: projectName
+      }));
+      
+    } catch (error) {
+      console.error('Missing equipment state loading error:', error);
+      alert('Error loading WBS structure file. Please ensure the file has columns: wbs_code, parent_wbs_code, wbs_name');
     }
   };
 
@@ -289,9 +479,6 @@ const WBSGenerator = () => {
     let subsystemCounter = projectState?.lastWbsCode ? projectState.lastWbsCode : 3;
     let tbcCounter = 1;
 
-    // Set continue mode flag
-    setIsContinueMode(!!projectState);
-
     // Calculate how many subsystems already exist (for proper S-numbering)
     const existingSubsystemCount = projectState?.subsystems?.length || 0;
 
@@ -300,8 +487,7 @@ const WBSGenerator = () => {
     allNodes.push({
       wbs_code: projectId,
       parent_wbs_code: null,
-      wbs_name: projectName,
-      isExisting: !projectState // Mark as existing if continuing project
+      wbs_name: projectName
     });
 
     // M | Milestones
@@ -309,8 +495,7 @@ const WBSGenerator = () => {
     allNodes.push({
       wbs_code: milestonesId,
       parent_wbs_code: projectId,
-      wbs_name: "M | Milestones",
-      isExisting: !projectState
+      wbs_name: "M | Milestones"
     });
 
     // P | Pre-requisites
@@ -318,8 +503,7 @@ const WBSGenerator = () => {
     allNodes.push({
       wbs_code: prerequisitesId,
       parent_wbs_code: projectId,
-      wbs_name: "P | Pre-requisites",
-      isExisting: !projectState
+      wbs_name: "P | Pre-requisites"
     });
 
     // If continuing a project, add existing subsystem nodes (for preview only)
@@ -478,9 +662,6 @@ const WBSGenerator = () => {
     // Set output to NEW nodes only for export
     setWbsOutput(newNodes);
     
-    // Set visualization to COMPLETE structure for preview
-    setWbsVisualization(allNodes);
-    
     const newProjectState = {
       projectName,
       lastWbsCode: subsystemCounter,
@@ -492,8 +673,132 @@ const WBSGenerator = () => {
     setProjectState(newProjectState);
   };
 
+  const generateMissingEquipmentWBS = (newEquipmentList) => {
+    if (!missingEquipmentConfig.existingWbsNodes) {
+      alert('Please load the existing WBS structure first (Step 1)');
+      return;
+    }
+
+    const existingWbsNodes = missingEquipmentConfig.existingWbsNodes;
+    const existingEquipmentNumbers = extractEquipmentNumbers(existingWbsNodes);
+    
+    // Compare equipment lists
+    const analysis = compareEquipmentLists(existingEquipmentNumbers, newEquipmentList);
+    setMissingEquipmentAnalysis(analysis);
+    
+    // Only process new equipment (commissioned as Y)
+    const newCommissionedEquipment = analysis.newEquipment.filter(item => item.commissioning === 'Y');
+    
+    if (newCommissionedEquipment.length === 0) {
+      alert('No new commissioned equipment found. All equipment already exists in the WBS structure.');
+      setWbsOutput([]);
+      return;
+    }
+
+    // Generate WBS codes for new equipment only
+    const newWbsNodes = [];
+    
+    // Process each new equipment item
+    newCommissionedEquipment.forEach(equipment => {
+      const categoryCode = determineCategoryCode(equipment);
+      const subsystemName = formatSubsystemName(equipment.subsystem);
+      
+      // Find the existing subsystem and category nodes
+      const existingSubsystemNode = existingWbsNodes.find(node => 
+        node.wbs_name.includes(subsystemName) && node.wbs_name.startsWith('S')
+      );
+      
+      if (!existingSubsystemNode) {
+        console.warn(`Subsystem not found for equipment ${equipment.equipmentNumber}: ${subsystemName}`);
+        return;
+      }
+      
+      const existingCategoryNode = existingWbsNodes.find(node => 
+        node.parent_wbs_code === existingSubsystemNode.wbs_code && 
+        node.wbs_name.includes(`${categoryCode} |`)
+      );
+      
+      if (!existingCategoryNode) {
+        console.warn(`Category not found for equipment ${equipment.equipmentNumber}: ${categoryCode}`);
+        return;
+      }
+      
+      // Generate new WBS code for this equipment
+      const newWbsCode = findNextWBSCode(existingCategoryNode.wbs_code, [...existingWbsNodes, ...newWbsNodes]);
+      
+      const newEquipmentNode = {
+        wbs_code: newWbsCode,
+        parent_wbs_code: existingCategoryNode.wbs_code,
+        wbs_name: `${equipment.equipmentNumber} | ${equipment.description}`,
+        isNew: true
+      };
+      
+      newWbsNodes.push(newEquipmentNode);
+      
+      // Handle child equipment
+      const childEquipment = analysis.newEquipment.filter(child => 
+        child.parentEquipmentNumber === equipment.equipmentNumber && 
+        child.commissioning === 'Y'
+      );
+      
+      let childCounter = 1;
+      childEquipment.forEach(child => {
+        const childWbsCode = `${newWbsCode}.${childCounter}`;
+        const childNode = {
+          wbs_code: childWbsCode,
+          parent_wbs_code: newWbsCode,
+          wbs_name: `${child.equipmentNumber} | ${child.description}`,
+          isNew: true
+        };
+        
+        newWbsNodes.push(childNode);
+        childCounter++;
+      });
+    });
+    
+    // Handle TBC equipment
+    const newTbcEquipment = analysis.newEquipment.filter(item => item.commissioning === 'TBC');
+    if (newTbcEquipment.length > 0) {
+      // Find existing TBC section or create new one
+      let tbcNode = existingWbsNodes.find(node => 
+        node.wbs_name.includes('TBC - Equipment To Be Confirmed')
+      );
+      
+      if (!tbcNode) {
+        // Create new TBC section
+        const projectNode = existingWbsNodes.find(node => node.parent_wbs_code === null);
+        const nextSubsystemCode = findNextWBSCode(projectNode.wbs_code, [...existingWbsNodes, ...newWbsNodes]);
+        
+        tbcNode = {
+          wbs_code: nextSubsystemCode,
+          parent_wbs_code: projectNode.wbs_code,
+          wbs_name: "TBC - Equipment To Be Confirmed",
+          isNew: true
+        };
+        
+        newWbsNodes.push(tbcNode);
+      }
+      
+      // Add new TBC equipment
+      newTbcEquipment.forEach(item => {
+        const tbcItemCode = findNextWBSCode(tbcNode.wbs_code, [...existingWbsNodes, ...newWbsNodes]);
+        const tbcItemNode = {
+          wbs_code: tbcItemCode,
+          parent_wbs_code: tbcNode.wbs_code,
+          wbs_name: `${item.equipmentNumber} | ${item.description}`,
+          isNew: true
+        };
+        
+        newWbsNodes.push(tbcItemNode);
+      });
+    }
+    
+    setWbsOutput(newWbsNodes);
+    setProjectName(missingEquipmentConfig.existingProjectName || 'Missing Equipment Update');
+  };
+
   const validateP6Structure = (nodes) => {
-    const rootNodes = nodes.filter(n => n.parent_wbs_code === null || n.parent_wbs_code === '');
+    const rootNodes = nodes.filter(n => n.parent_wbs_code === null);
     if (rootNodes.length !== 1) {
       console.warn(`P6 Warning: Expected 1 root node, found: ${rootNodes.length}`);
       return false;
@@ -501,9 +806,20 @@ const WBSGenerator = () => {
 
     const codeSet = new Set(nodes.map(n => n.wbs_code));
     for (const node of nodes) {
-      if (node.parent_wbs_code !== null && node.parent_wbs_code !== '' && !codeSet.has(node.parent_wbs_code)) {
+      if (node.parent_wbs_code !== null && !codeSet.has(node.parent_wbs_code)) {
         console.warn(`P6 Warning: Parent WBS code ${node.parent_wbs_code} not found for node ${node.wbs_code}`);
         return false;
+      }
+    }
+
+    // Check hierarchical structure
+    for (const node of nodes) {
+      if (node.parent_wbs_code !== null) {
+        const parentNode = nodes.find(n => n.wbs_code === node.parent_wbs_code);
+        if (!parentNode) {
+          console.warn(`P6 Warning: Parent node ${node.parent_wbs_code} not found for ${node.wbs_code}`);
+          return false;
+        }
       }
     }
 
@@ -556,7 +872,8 @@ const WBSGenerator = () => {
         const subsystemEquipment = data.filter(item => 
           item.subsystem === subsystem && 
           item.commissioning === 'Y' && 
-          equipmentPatterns.some(pattern => {
+          (equipmentPatterns.length === 0 || 
+           equipmentPatterns.some(pattern => {
              const equipmentUpper = item.equipmentNumber.toUpperCase();
              const patternUpper = pattern.toUpperCase();
              
@@ -593,7 +910,7 @@ const WBSGenerator = () => {
                return equipmentUpper.includes(patternUpper) || 
                       (item.plu && item.plu.toUpperCase().includes(patternUpper));
              }
-           })
+           }))
         );
 
         if (number === '99') {
@@ -735,30 +1052,15 @@ const WBSGenerator = () => {
     
     const link = document.createElement('a');
     link.href = url;
-    link.download = `${projectName}_WBS_P6_Import.csv`;
+    
+    // Use different naming convention for missing equipment
+    if (uploadMode === 'missing') {
+      link.download = `${projectName}_NEW_Equipment_P6_Import.csv`;
+    } else {
+      link.download = `${projectName}_WBS_P6_Import.csv`;
+    }
+    
     link.click();
-    
-    URL.revokeObjectURL(url);
-  };
-
-  const exportCompleteWBSCSV = () => {
-    if (wbsVisualization.length === 0) return;
-
-    const csvContent = [
-      'wbs_code,parent_wbs_code,wbs_name',
-      ...wbsVisualization.map(node => 
-        `"${node.wbs_code}","${node.parent_wbs_code || ''}","${node.wbs_name}"`
-      )
-    ].join('\n');
-
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `${projectName}_Complete_WBS_Structure.csv`;
-    link.click();
-    
     URL.revokeObjectURL(url);
   };
 
@@ -784,13 +1086,7 @@ const WBSGenerator = () => {
 
         <div className="grid md:grid-cols-3 gap-4 mb-6">
           <button
-            onClick={() => {
-              setUploadMode('new');
-              setIsContinueMode(false);
-              setProjectState(null);
-              setWbsOutput([]);
-              setWbsVisualization([]);
-            }}
+            onClick={() => setUploadMode('new')}
             className={`p-6 rounded-lg border-2 transition-all ${
               uploadMode === 'new' ? 'border-opacity-100 shadow-lg' : 'border-opacity-30 hover:border-opacity-60'
             }`}
@@ -805,10 +1101,7 @@ const WBSGenerator = () => {
           </button>
           
           <button
-            onClick={() => {
-              setUploadMode('continue');
-              setIsContinueMode(true);
-            }}
+            onClick={() => setUploadMode('continue')}
             className={`p-6 rounded-lg border-2 transition-all ${
               uploadMode === 'continue' ? 'border-opacity-100 shadow-lg' : 'border-opacity-30 hover:border-opacity-60'
             }`}
@@ -823,10 +1116,7 @@ const WBSGenerator = () => {
           </button>
           
           <button
-            onClick={() => {
-              setUploadMode('missing');
-              setIsContinueMode(false);
-            }}
+            onClick={() => setUploadMode('missing')}
             className={`p-6 rounded-lg border-2 transition-all ${
               uploadMode === 'missing' ? 'border-opacity-100 shadow-lg' : 'border-opacity-30 hover:border-opacity-60'
             }`}
@@ -993,177 +1283,247 @@ const WBSGenerator = () => {
           
           <div className="mb-6 p-4 rounded-lg" style={{ backgroundColor: rjeColors.teal + '15' }}>
             <h4 className="font-semibold mb-2" style={{ color: rjeColors.darkBlue }}>
-              What happens next:
+              How this works:
             </h4>
             <ul className="text-sm space-y-1 text-gray-700">
-              <li>• Specify where to insert missing equipment in existing WBS</li>
-              <li>• Upload equipment list with individual items</li>
-              <li>• <strong>Required columns:</strong> Subsystem, Parent Equipment Number, Equipment Number, Description, Commissioning (Y/N)</li>
-              <li>• Equipment will be inserted at specified WBS location</li>
-              <li>• Useful for adding forgotten equipment or design changes</li>
+              <li>• <strong>Step 1:</strong> Load your existing WBS structure (CSV from previous export)</li>
+              <li>• <strong>Step 2:</strong> Upload complete equipment list (original + new equipment)</li>
+              <li>• System will identify new equipment by comparing Equipment Numbers</li>
+              <li>• Only new equipment will be exported with proper WBS codes</li>
+              <li>• Perfect for P6 import without affecting existing equipment</li>
             </ul>
           </div>
 
           <div className="mb-6">
             <h4 className="font-semibold mb-3" style={{ color: rjeColors.darkBlue }}>
-              Configuration
+              Step 1: Load Existing WBS Structure
             </h4>
-            <div className="grid md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium mb-2">Parent WBS Code</label>
-                <input
-                  type="text"
-                  placeholder="e.g., 1136 or 5737.1064.1575.1136"
-                  value={missingEquipmentConfig.parentWbsCode}
-                  onChange={(e) => setMissingEquipmentConfig(prev => ({
-                    ...prev,
-                    parentWbsCode: e.target.value
-                  }))}
-                  className="w-full p-3 border-2 rounded-lg focus:outline-none"
-                  style={{ borderColor: rjeColors.lightGreen }}
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-2">Starting WBS Code</label>
-                <input
-                  type="text"
-                  placeholder="e.g., 1144"
-                  value={missingEquipmentConfig.startingWbsCode}
-                  onChange={(e) => setMissingEquipmentConfig(prev => ({
-                    ...prev,
-                    startingWbsCode: e.target.value
-                  }))}
-                  className="w-full p-3 border-2 rounded-lg focus:outline-none"
-                  style={{ borderColor: rjeColors.lightGreen }}
-                />
-              </div>
+            <div className="mb-3 p-3 rounded-lg" style={{ backgroundColor: rjeColors.lightGreen + '15' }}>
+              <p className="text-sm text-gray-700">
+                <strong>Expected file format:</strong> CSV or Excel with columns: <code>wbs_code</code>, <code>parent_wbs_code</code>, <code>wbs_name</code>
+              </p>
+              <p className="text-sm text-gray-700 mt-1">
+                Use the WBS CSV file from your previous export or P6 export.
+              </p>
+            </div>
+            <div className="border-2 border-dashed rounded-lg p-6 text-center" style={{ borderColor: rjeColors.teal }}>
+              <FileText className="w-10 h-10 mx-auto mb-3" style={{ color: rjeColors.teal }} />
+              <p className="text-md font-medium mb-2">Load Existing WBS Structure</p>
+              <p className="text-gray-600 mb-4">CSV or Excel (.xlsx) file with WBS structure</p>
+              <input
+                ref={missingEquipmentStateInputRef}
+                type="file"
+                accept=".csv,.xlsx,.xls"
+                onChange={handleMissingEquipmentStateUpload}
+                className="hidden"
+              />
+              <button
+                onClick={() => missingEquipmentStateInputRef.current?.click()}
+                className="px-4 py-2 text-white rounded-lg font-medium"
+                style={{ backgroundColor: rjeColors.teal }}
+              >
+                Load WBS Structure
+              </button>
+              {missingEquipmentConfig.existingWbsNodes && (
+                <div className="mt-3 text-sm text-green-600">
+                  ✅ Loaded: {missingEquipmentConfig.existingProjectName} - {missingEquipmentConfig.existingWbsNodes.length} WBS nodes
+                </div>
+              )}
             </div>
           </div>
 
-          <div className="border-2 border-dashed rounded-lg p-8 text-center" style={{ borderColor: rjeColors.teal }}>
-            <Upload className="w-12 h-12 mx-auto mb-4" style={{ color: rjeColors.teal }} />
-            <p className="text-lg font-medium mb-2">Upload Missing Equipment List</p>
-            <p className="text-gray-600 mb-4">Excel (.xlsx) or CSV files supported</p>
-            <input
-              type="file"
-              accept=".csv,.xlsx,.json"
-              onChange={handleFileUpload}
-              className="hidden"
-              id="missing-file-upload"
-            />
-            <button
-              onClick={() => document.getElementById('missing-file-upload')?.click()}
-              disabled={isProcessing}
-              className="px-6 py-3 text-white rounded-lg font-medium transition-all hover:shadow-lg disabled:opacity-50"
-              style={{ backgroundColor: rjeColors.teal }}
-            >
-              {isProcessing ? 'Processing Equipment List...' : 'Choose Equipment File'}
-            </button>
-          </div>
+          {missingEquipmentConfig.existingWbsNodes && (
+            <div>
+              <h4 className="font-semibold mb-3" style={{ color: rjeColors.darkBlue }}>
+                Step 2: Upload Complete Equipment List
+              </h4>
+              <div className="mb-3 p-3 rounded-lg" style={{ backgroundColor: rjeColors.lightGreen + '15' }}>
+                <p className="text-sm text-gray-700">
+                  Upload your complete equipment list (original + new equipment). The system will automatically identify what's new.
+                </p>
+              </div>
+              <div className="border-2 border-dashed rounded-lg p-8 text-center" style={{ borderColor: rjeColors.teal }}>
+                <Upload className="w-12 h-12 mx-auto mb-4" style={{ color: rjeColors.teal }} />
+                <p className="text-lg font-medium mb-2">Upload Complete Equipment List</p>
+                <p className="text-gray-600 mb-4">Excel (.xlsx) or CSV files supported</p>
+                <input
+                  type="file"
+                  accept=".csv,.xlsx,.json"
+                  onChange={handleFileUpload}
+                  className="hidden"
+                  id="missing-file-upload"
+                />
+                <button
+                  onClick={() => document.getElementById('missing-file-upload')?.click()}
+                  disabled={isProcessing}
+                  className="px-6 py-3 text-white rounded-lg font-medium transition-all hover:shadow-lg disabled:opacity-50"
+                  style={{ backgroundColor: rjeColors.teal }}
+                >
+                  {isProcessing ? 'Processing Equipment List...' : 'Choose Equipment File'}
+                </button>
+              </div>
+              
+              {missingEquipmentAnalysis.removedEquipment.length > 0 && (
+                <div className="mt-6 p-4 rounded-lg" style={{ backgroundColor: '#FED7AA' }}>
+                  <div className="flex items-center justify-between mb-2">
+                    <h4 className="font-semibold text-orange-800">
+                      ⚠️ {missingEquipmentAnalysis.removedEquipment.length} equipment items were removed from the list
+                    </h4>
+                    <button
+                      onClick={() => setShowRemovedEquipment(!showRemovedEquipment)}
+                      className="text-sm text-orange-600 hover:text-orange-800"
+                    >
+                      {showRemovedEquipment ? 'Hide' : 'Show'} Details
+                    </button>
+                  </div>
+                  <p className="text-sm text-orange-700 mb-2">
+                    These equipment items existed in your WBS but are not in the new equipment list. They need to be handled manually in P6.
+                  </p>
+                  {showRemovedEquipment && (
+                    <div className="mt-3 max-h-32 overflow-y-auto bg-white rounded p-3">
+                      <ul className="text-sm space-y-1">
+                        {missingEquipmentAnalysis.removedEquipment.map((equipmentNumber, index) => (
+                          <li key={index} className="text-gray-700">
+                            • {equipmentNumber}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 
-      {(wbsOutput.length > 0 || wbsVisualization.length > 0) && (
+      {wbsOutput.length > 0 && (
         <div className="space-y-6">
-          <WBSTreeVisualization wbsNodes={wbsVisualization} isContinueMode={isContinueMode} />
+          <WBSTreeVisualization wbsNodes={wbsOutput} />
           
           <div className="bg-white rounded-xl shadow-lg p-6">
             <h3 className="text-xl font-bold mb-4" style={{ color: rjeColors.darkBlue }}>
-              Export WBS Structure - Modern Architecture (v4.0) - WBS Generator v2.0
+              {uploadMode === 'missing' 
+                ? `Export New Equipment (${wbsOutput.length} new items)` 
+                : `Export WBS Structure (${wbsOutput.length} nodes)`
+              } - Modern Architecture (v4.0) - WBS Generator v2.0
             </h3>
-            
-            {/* Export Status Information */}
-            <div className="mb-6 p-4 rounded-lg" style={{ backgroundColor: rjeColors.lightGreen + '15' }}>
-              <div className="flex items-center mb-2">
-                <Info className="w-5 h-5 mr-2" style={{ color: rjeColors.darkBlue }} />
-                <h4 className="font-semibold" style={{ color: rjeColors.darkBlue }}>
-                  Export Options:
-                </h4>
-              </div>
-              <ul className="text-sm space-y-1 text-gray-700">
-                <li>• <strong>New Items CSV:</strong> Contains only newly added equipment ({wbsOutput.length} nodes) - Use for P6 import</li>
-                <li>• <strong>Complete Structure CSV:</strong> Contains entire WBS structure ({wbsVisualization.length} nodes) - Use for full project backup</li>
-                <li>• <strong>Project State JSON:</strong> Technical backup for continuing project later</li>
-              </ul>
-            </div>
             
             <div className="flex flex-wrap gap-3 mb-6">
               <button
                 onClick={exportWBSCSV}
-                disabled={wbsOutput.length === 0}
-                className="flex items-center px-4 py-2 text-white rounded-lg font-medium disabled:opacity-50"
+                className="flex items-center px-4 py-2 text-white rounded-lg font-medium"
                 style={{ backgroundColor: rjeColors.teal }}
               >
                 <Download className="w-4 h-4 mr-2" />
-                Export New Items CSV ({wbsOutput.length} nodes)
+                {uploadMode === 'missing' 
+                  ? 'Export NEW Equipment CSV (for P6 Import)' 
+                  : 'Export WBS CSV (for P6 & Continue Project)'
+                }
               </button>
-              <button
-                onClick={exportCompleteWBSCSV}
-                disabled={wbsVisualization.length === 0}
-                className="flex items-center px-4 py-2 text-white rounded-lg font-medium disabled:opacity-50"
-                style={{ backgroundColor: rjeColors.blue }}
-              >
-                <Download className="w-4 h-4 mr-2" />
-                Export Complete Structure CSV ({wbsVisualization.length} nodes)
-              </button>
-              <button
-                onClick={exportProjectState}
-                disabled={!projectState}
-                className="flex items-center px-4 py-2 text-white rounded-lg font-medium disabled:opacity-50"
-                style={{ backgroundColor: rjeColors.darkGreen }}
-              >
-                <FileText className="w-4 h-4 mr-2" />
-                Export Project State (JSON)
-              </button>
+              {uploadMode !== 'missing' && (
+                <button
+                  onClick={exportProjectState}
+                  className="flex items-center px-4 py-2 text-white rounded-lg font-medium"
+                  style={{ backgroundColor: rjeColors.darkGreen }}
+                >
+                  <FileText className="w-4 h-4 mr-2" />
+                  Export Project State (JSON)
+                </button>
+              )}
             </div>
 
-            <div className="mb-4 p-3 rounded-lg" style={{ backgroundColor: rjeColors.lightGreen + '15' }}>
-              <p className="text-sm text-gray-700">
-                <strong>💡 Continue Project Workflow:</strong> Use the <strong>New Items CSV</strong> to import only the newly added equipment into P6. 
-                Use the <strong>Complete Structure CSV</strong> to continue adding more subsystems later.
-              </p>
-            </div>
+            {uploadMode === 'missing' ? (
+              <div className="mb-4 p-3 rounded-lg" style={{ backgroundColor: rjeColors.lightGreen + '15' }}>
+                <p className="text-sm text-gray-700">
+                  <strong>🎯 Ready for P6 Import:</strong> This export contains only the <strong>new equipment</strong> that wasn't in your existing WBS. 
+                  Import this file into P6 to add the missing equipment without affecting existing items.
+                </p>
+              </div>
+            ) : (
+              <div className="mb-4 p-3 rounded-lg" style={{ backgroundColor: rjeColors.lightGreen + '15' }}>
+                <p className="text-sm text-gray-700">
+                  <strong>💡 P6 Import Ready:</strong> Use the <strong>WBS CSV export</strong> for Primavera P6 import or to continue this project later. 
+                  The CSV file uses tab-separated format optimized for P6 compatibility with hierarchical decimal numbering.
+                </p>
+              </div>
+            )}
 
-            <div className="grid md:grid-cols-5 gap-4 mb-6">
-              <div className="text-center p-3 rounded-lg" style={{ backgroundColor: `${rjeColors.mediumGreen}20` }}>
-                <div className="text-2xl font-bold" style={{ color: rjeColors.darkBlue }}>
-                  {wbsVisualization.length}
+            {uploadMode === 'missing' ? (
+              <div className="grid md:grid-cols-4 gap-4 mb-6">
+                <div className="text-center p-3 rounded-lg" style={{ backgroundColor: `${rjeColors.mediumGreen}20` }}>
+                  <div className="text-2xl font-bold" style={{ color: rjeColors.darkBlue }}>
+                    {missingEquipmentAnalysis.newEquipment.filter(item => item.commissioning === 'Y').length}
+                  </div>
+                  <div className="text-sm text-gray-600">New Equipment (Y)</div>
                 </div>
-                <div className="text-sm text-gray-600">Total WBS Nodes</div>
-              </div>
-              <div className="text-center p-3 rounded-lg" style={{ backgroundColor: `${rjeColors.darkGreen}20` }}>
-                <div className="text-2xl font-bold" style={{ color: rjeColors.darkBlue }}>
-                  {wbsOutput.length}
+                <div className="text-center p-3 rounded-lg" style={{ backgroundColor: `${rjeColors.teal}20` }}>
+                  <div className="text-2xl font-bold" style={{ color: rjeColors.darkBlue }}>
+                    {missingEquipmentAnalysis.newEquipment.filter(item => item.commissioning === 'TBC').length}
+                  </div>
+                  <div className="text-sm text-gray-600">New TBC Equipment</div>
                 </div>
-                <div className="text-sm text-gray-600">New Nodes</div>
-              </div>
-              <div className="text-center p-3 rounded-lg" style={{ backgroundColor: `${rjeColors.teal}20` }}>
-                <div className="text-2xl font-bold" style={{ color: rjeColors.darkBlue }}>
-                  {equipmentData.filter(item => item.commissioning === 'Y').length}
+                <div className="text-center p-3 rounded-lg" style={{ backgroundColor: `${rjeColors.blue}20` }}>
+                  <div className="text-2xl font-bold" style={{ color: rjeColors.darkBlue }}>
+                    {missingEquipmentAnalysis.existingEquipment.length}
+                  </div>
+                  <div className="text-sm text-gray-600">Existing Equipment</div>
                 </div>
-                <div className="text-sm text-gray-600">Commissioned (Y)</div>
-              </div>
-              <div className="text-center p-3 rounded-lg" style={{ backgroundColor: `${rjeColors.blue}20` }}>
-                <div className="text-2xl font-bold" style={{ color: rjeColors.darkBlue }}>
-                  {equipmentData.filter(item => item.commissioning === 'TBC').length}
+                <div className="text-center p-3 rounded-lg" style={{ backgroundColor: `${rjeColors.darkBlue}20` }}>
+                  <div className="text-2xl font-bold text-white" style={{ backgroundColor: rjeColors.darkBlue }}>
+                    {missingEquipmentAnalysis.removedEquipment.length}
+                  </div>
+                  <div className="text-sm text-gray-600">Removed Equipment</div>
                 </div>
-                <div className="text-sm text-gray-600">TBC Equipment</div>
               </div>
-              <div className="text-center p-3 rounded-lg" style={{ backgroundColor: `${rjeColors.darkBlue}20` }}>
-                <div className="text-2xl font-bold text-white" style={{ backgroundColor: rjeColors.darkBlue }}>
-                  {equipmentData.filter(item => item.commissioning === 'N').length}
+            ) : (
+              <div className="grid md:grid-cols-5 gap-4 mb-6">
+                <div className="text-center p-3 rounded-lg" style={{ backgroundColor: `${rjeColors.mediumGreen}20` }}>
+                  <div className="text-2xl font-bold" style={{ color: rjeColors.darkBlue }}>
+                    {wbsOutput.length}
+                  </div>
+                  <div className="text-sm text-gray-600">Total WBS Nodes</div>
                 </div>
-                <div className="text-sm text-gray-600">Excluded (N)</div>
+                <div className="text-center p-3 rounded-lg" style={{ backgroundColor: `${rjeColors.darkGreen}20` }}>
+                  <div className="text-2xl font-bold" style={{ color: rjeColors.darkBlue }}>
+                    {projectState?.subsystems.length || 0}
+                  </div>
+                  <div className="text-sm text-gray-600">Subsystems</div>
+                </div>
+                <div className="text-center p-3 rounded-lg" style={{ backgroundColor: `${rjeColors.teal}20` }}>
+                  <div className="text-2xl font-bold" style={{ color: rjeColors.darkBlue }}>
+                    {equipmentData.filter(item => item.commissioning === 'Y').length}
+                  </div>
+                  <div className="text-sm text-gray-600">Commissioned (Y)</div>
+                </div>
+                <div className="text-center p-3 rounded-lg" style={{ backgroundColor: `${rjeColors.blue}20` }}>
+                  <div className="text-2xl font-bold" style={{ color: rjeColors.darkBlue }}>
+                    {equipmentData.filter(item => item.commissioning === 'TBC').length}
+                  </div>
+                  <div className="text-sm text-gray-600">TBC Equipment</div>
+                </div>
+                <div className="text-center p-3 rounded-lg" style={{ backgroundColor: `${rjeColors.darkBlue}20` }}>
+                  <div className="text-2xl font-bold text-white" style={{ backgroundColor: rjeColors.darkBlue }}>
+                    {equipmentData.filter(item => item.commissioning === 'N').length}
+                  </div>
+                  <div className="text-sm text-gray-600">Excluded (N)</div>
+                </div>
               </div>
-            </div>
+            )}
 
             <div className="bg-gray-50 rounded-lg p-4 max-h-64 overflow-y-auto">
               <div className="flex justify-between items-center mb-2">
                 <h4 className="font-semibold text-sm" style={{ color: rjeColors.darkBlue }}>
-                  New Items Preview (For P6 Import)
+                  {uploadMode === 'missing' 
+                    ? 'New Equipment Preview (P6 Format)' 
+                    : 'WBS Structure Preview (P6 Format)'
+                  }
                 </h4>
                 <span className="text-xs text-gray-500">
-                  {wbsOutput.length > 0 ? `${wbsOutput[0]?.wbs_code} - ${wbsOutput[wbsOutput.length - 1]?.wbs_code}` : 'No new items'}
+                  {uploadMode === 'missing' 
+                    ? `New Items: ${wbsOutput.length}` 
+                    : `Hierarchical: ${wbsOutput[0]?.wbs_code} - ${wbsOutput[wbsOutput.length - 1]?.wbs_code}`
+                  }
                 </span>
               </div>
               <div className="text-sm font-mono">
@@ -1174,13 +1534,13 @@ const WBSGenerator = () => {
                     <span className="text-green-600">{node.parent_wbs_code || 'ROOT'}</span>
                     <span className="text-gray-400"> | </span>
                     <span>{node.wbs_name}</span>
+                    {uploadMode === 'missing' && (
+                      <span className="text-green-500 ml-2">[NEW]</span>
+                    )}
                   </div>
                 ))}
                 {wbsOutput.length > 20 && (
-                  <div className="text-gray-500 py-2">... and {wbsOutput.length - 20} more new nodes</div>
-                )}
-                {wbsOutput.length === 0 && (
-                  <div className="text-gray-500 py-2">No new items to export. Load existing WBS structure and add equipment.</div>
+                  <div className="text-gray-500 py-2">... and {wbsOutput.length - 20} more {uploadMode === 'missing' ? 'new items' : 'nodes'}</div>
                 )}
               </div>
             </div>
@@ -1191,8 +1551,8 @@ const WBSGenerator = () => {
   );
 };
 
-// Enhanced WBS Tree Visualization Component
-const WBSTreeVisualization = ({ wbsNodes, isContinueMode = false }) => {
+// WBS Tree Visualization Component
+const WBSTreeVisualization = ({ wbsNodes }) => {
   const [expandedNodes, setExpandedNodes] = useState(new Set());
   const [showVisualization, setShowVisualization] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -1207,7 +1567,7 @@ const WBSTreeVisualization = ({ wbsNodes, isContinueMode = false }) => {
     const roots = [];
     nodes.forEach(node => {
       const nodeWithChildren = nodeMap.get(node.wbs_code);
-      if (node.parent_wbs_code === null || node.parent_wbs_code === '') {
+      if (node.parent_wbs_code === null) {
         roots.push(nodeWithChildren);
       } else {
         const parent = nodeMap.get(node.parent_wbs_code);
@@ -1238,25 +1598,22 @@ const WBSTreeVisualization = ({ wbsNodes, isContinueMode = false }) => {
     setExpandedNodes(new Set());
   };
 
-  const getNodeBackgroundColor = (wbsName, isNew, isExisting) => {
-    let baseColor = 'transparent';
-    
-    if (wbsName.includes('01 |')) baseColor = rjeColors.lightGreen + '20';
-    else if (wbsName.includes('02 |')) baseColor = rjeColors.mediumGreen + '20';
-    else if (wbsName.includes('03 |')) baseColor = rjeColors.darkGreen + '20';
-    else if (wbsName.includes('04 |')) baseColor = rjeColors.teal + '20';
-    else if (wbsName.includes('05 |')) baseColor = rjeColors.blue + '20';
-    else if (wbsName.includes('06 |')) baseColor = rjeColors.darkBlue + '20';
-    else if (wbsName.includes('07 |')) baseColor = rjeColors.lightGreen + '25';
-    else if (wbsName.includes('08 |')) baseColor = rjeColors.mediumGreen + '25';
-    else if (wbsName.includes('09 |')) baseColor = rjeColors.darkGreen + '25';
-    else if (wbsName.includes('10 |')) baseColor = rjeColors.teal + '25';
-    else if (wbsName.includes('99 |')) baseColor = rjeColors.blue + '25';
-    else if (wbsName.includes('M |')) baseColor = rjeColors.mediumGreen + '30';
-    else if (wbsName.includes('P |')) baseColor = rjeColors.teal + '30';
-    else if (wbsName.includes('S') && wbsName.includes('|')) baseColor = rjeColors.darkBlue + '30';
-    
-    return baseColor;
+  const getNodeBackgroundColor = (wbsName) => {
+    if (wbsName.includes('01 |')) return rjeColors.lightGreen + '20';
+    if (wbsName.includes('02 |')) return rjeColors.mediumGreen + '20';
+    if (wbsName.includes('03 |')) return rjeColors.darkGreen + '20';
+    if (wbsName.includes('04 |')) return rjeColors.teal + '20';
+    if (wbsName.includes('05 |')) return rjeColors.blue + '20';
+    if (wbsName.includes('06 |')) return rjeColors.darkBlue + '20';
+    if (wbsName.includes('07 |')) return rjeColors.lightGreen + '25';
+    if (wbsName.includes('08 |')) return rjeColors.mediumGreen + '25';
+    if (wbsName.includes('09 |')) return rjeColors.darkGreen + '25';
+    if (wbsName.includes('10 |')) return rjeColors.teal + '25';
+    if (wbsName.includes('99 |')) return rjeColors.blue + '25';
+    if (wbsName.includes('M |')) return rjeColors.mediumGreen + '30';
+    if (wbsName.includes('P |')) return rjeColors.teal + '30';
+    if (wbsName.includes('S') && wbsName.includes('|')) return rjeColors.darkBlue + '30';
+    return 'transparent';
   };
 
   const TreeNode = ({ node, level }) => {
@@ -1275,19 +1632,15 @@ const WBSTreeVisualization = ({ wbsNodes, isContinueMode = false }) => {
       if (!hasMatchingChildren) return null;
     }
 
-    const showNewExistingLabels = isContinueMode;
-    const isNewNode = showNewExistingLabels && node.isNew;
-    const isExistingNode = showNewExistingLabels && node.isExisting;
-
     return (
       <div className="select-none">
         <div 
           className={`flex items-center py-2 px-3 rounded-lg mb-1 cursor-pointer hover:shadow-sm transition-all ${
             level === 0 ? 'border-l-4' : ''
-          } ${isNewNode ? 'border-r-4 border-r-green-400' : ''} ${isExistingNode ? 'opacity-70' : ''}`}
+          }`}
           style={{ 
             marginLeft: `${level * 20}px`,
-            backgroundColor: getNodeBackgroundColor(node.wbs_name, node.isNew, node.isExisting),
+            backgroundColor: getNodeBackgroundColor(node.wbs_name),
             borderLeftColor: level === 0 ? rjeColors.darkBlue : 'transparent'
           }}
           onClick={() => hasChildren && toggleNode(node.wbs_code)}
@@ -1306,25 +1659,15 @@ const WBSTreeVisualization = ({ wbsNodes, isContinueMode = false }) => {
             <div className="flex-1">
               <div className="flex items-center">
                 <span 
-                  className={`text-sm font-medium mr-3 px-2 py-1 rounded ${
-                    showNewExistingLabels && isNewNode ? 'bg-green-600 text-white' : 
-                    showNewExistingLabels && isExistingNode ? 'bg-gray-500 text-white' : 'text-white'
-                  }`}
-                  style={{ backgroundColor: showNewExistingLabels && isNewNode ? '#16a34a' : showNewExistingLabels && isExistingNode ? '#6b7280' : rjeColors.darkBlue }}
+                  className="text-sm font-medium mr-3 px-2 py-1 rounded"
+                  style={{ backgroundColor: rjeColors.darkBlue, color: 'white' }}
                 >
                   {node.wbs_code}
                 </span>
-                <span className={`font-medium ${isExistingNode ? 'text-gray-600' : 'text-gray-800'}`}>
-                  {node.wbs_name}
-                </span>
-                {showNewExistingLabels && isNewNode && (
-                  <span className="ml-2 px-2 py-1 text-xs bg-green-100 text-green-800 rounded-full">
+                <span className="font-medium text-gray-800">{node.wbs_name}</span>
+                {node.isNew && (
+                  <span className="text-xs px-2 py-1 ml-2 rounded" style={{ backgroundColor: rjeColors.mediumGreen, color: 'white' }}>
                     NEW
-                  </span>
-                )}
-                {showNewExistingLabels && isExistingNode && (
-                  <span className="ml-2 px-2 py-1 text-xs bg-gray-100 text-gray-600 rounded-full">
-                    EXISTING
                   </span>
                 )}
               </div>
@@ -1358,23 +1701,12 @@ const WBSTreeVisualization = ({ wbsNodes, isContinueMode = false }) => {
     node.wbs_code.toString().includes(searchTerm)
   ) : [];
 
-  const newNodesCount = wbsNodes.filter(node => node.isNew).length;
-  const existingNodesCount = wbsNodes.filter(node => node.isExisting).length;
-
   return (
     <div className="bg-white rounded-xl shadow-lg p-6">
       <div className="flex items-center justify-between mb-6">
-        <div>
-          <h3 className="text-xl font-bold" style={{ color: rjeColors.darkBlue }}>
-            {isContinueMode ? 'Complete WBS Structure Visualization' : 'WBS Structure Visualization'}
-          </h3>
-          <p className="text-sm text-gray-600 mt-1">
-            {isContinueMode ? 
-              `${existingNodesCount} existing • ${newNodesCount} new • ${wbsNodes.length} total nodes` :
-              `${wbsNodes.length} total nodes`
-            }
-          </p>
-        </div>
+        <h3 className="text-xl font-bold" style={{ color: rjeColors.darkBlue }}>
+          WBS Structure Visualization
+        </h3>
         <button
           onClick={() => setShowVisualization(!showVisualization)}
           className="flex items-center px-4 py-2 text-white rounded-lg font-medium"
@@ -1430,9 +1762,9 @@ const WBSTreeVisualization = ({ wbsNodes, isContinueMode = false }) => {
 
           <div className="mt-6 p-4 rounded-lg" style={{ backgroundColor: rjeColors.lightGreen + '10' }}>
             <h4 className="font-semibold mb-3" style={{ color: rjeColors.darkBlue }}>
-              Legend & Category Guide
+              Category Legend
             </h4>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2 text-sm mb-4">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2 text-sm">
               <div className="flex items-center">01 | Preparations</div>
               <div className="flex items-center">02 | Protection</div>
               <div className="flex items-center">03 | HV Switchboards</div>
@@ -1449,18 +1781,6 @@ const WBSTreeVisualization = ({ wbsNodes, isContinueMode = false }) => {
               <div className="flex items-center">S | Subsystems</div>
               <div className="flex items-center">TBC | To Be Confirmed</div>
             </div>
-            {isContinueMode && (
-              <div className="flex flex-wrap gap-4 text-sm">
-                <div className="flex items-center">
-                  <div className="w-4 h-4 bg-green-600 rounded mr-2"></div>
-                  <span>New Items (for export)</span>
-                </div>
-                <div className="flex items-center">
-                  <div className="w-4 h-4 bg-gray-500 rounded mr-2"></div>
-                  <span>Existing Items (already in project)</span>
-                </div>
-              </div>
-            )}
           </div>
         </>
       )}
