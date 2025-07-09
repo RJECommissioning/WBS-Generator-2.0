@@ -1514,33 +1514,7 @@ const WBSGenerator = () => {
               </div>
             )}
             
-            {/* Show complete structure preview only for new project mode */}
-            {uploadMode === 'new' && (
-              <div className="bg-gray-50 rounded-lg p-4 max-h-64 overflow-y-auto">
-                <div className="flex justify-between items-center mb-2">
-                  <h4 className="font-semibold text-sm" style={{ color: rjeColors.darkBlue }}>
-                    Complete WBS Structure Preview (P6 Format)
-                  </h4>
-                  <span className="text-xs text-gray-500">
-                    Total Nodes: {wbsOutput.length}
-                  </span>
-                </div>
-                <div className="text-sm font-mono">
-                  {wbsOutput.slice(0, 20).map(node => (
-                    <div key={node.wbs_code} className="py-1">
-                      <span className="text-blue-600">{node.wbs_code}</span>
-                      <span className="text-gray-400"> | </span>
-                      <span className="text-green-600">{node.parent_wbs_code || 'ROOT'}</span>
-                      <span className="text-gray-400"> | </span>
-                      <span>{node.wbs_name}</span>
-                    </div>
-                  ))}
-                  {wbsOutput.length > 20 && (
-                    <div className="text-gray-500 py-2">... and {wbsOutput.length - 20} more nodes</div>
-                  )}
-                </div>
-              </div>
-            )}
+            {/* Note: No preview section for 'new' mode - WBS Structure Visualization is sufficient */}
           </div>
         </div>
       )}
