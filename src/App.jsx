@@ -89,13 +89,13 @@ const WBSGenerator = () => {
   const extractEquipmentNumbers = (wbsNodes) => {
     const equipmentNumbers = new Set();
     wbsNodes.forEach(node => {
-      if (node.wbs_name.includes('|')) {
+      if (node.wbs_name && node.wbs_name.includes('|')) {
         const equipmentNumber = node.wbs_name.split('|')[0].trim();
         if (equipmentNumber && 
-            !equipmentNumber.startsWith('S') && 
-            !equipmentNumber.startsWith('M') && 
-            !equipmentNumber.startsWith('P') && 
-            !equipmentNumber.match(/^\d+$/) &&
+            !equipmentNumber.match(/^S\d+$/) && // Only exclude subsystem patterns like S1, S2, etc.
+            !equipmentNumber.match(/^M$/) && // Only exclude exact "M" (milestones)
+            !equipmentNumber.match(/^P$/) && // Only exclude exact "P" (prerequisites)
+            !equipmentNumber.match(/^\d+$/) && // Exclude pure numbers like 01, 02, etc.
             !equipmentNumber.includes('Phase') &&
             !equipmentNumber.includes('TBC') &&
             !equipmentNumber.includes('Test') &&
@@ -112,9 +112,34 @@ const WBSGenerator = () => {
     const existingSet = new Set(existingEquipment);
     const newSet = new Set(newEquipmentList.map(item => item.equipmentNumber));
     
+    console.log("🔍 DEBUG: Equipment Comparison Analysis");
+    console.log(`📋 Existing equipment count: ${existingEquipment.length}`);
+    console.log(`📦 New equipment list count: ${newEquipmentList.length}`);
+    console.log(`🔢 Unique new equipment numbers: ${newSet.size}`);
+    
+    // Debug: Show first 10 existing equipment numbers
+    console.log("🏗️ First 10 existing equipment numbers:");
+    existingEquipment.slice(0, 10).forEach(num => console.log(`   ${num}`));
+    
+    // Debug: Show first 10 new equipment numbers
+    console.log("📦 First 10 new equipment numbers:");
+    newEquipmentList.slice(0, 10).forEach(item => console.log(`   ${item.equipmentNumber}`));
+    
     const newEquipment = newEquipmentList.filter(item => !existingSet.has(item.equipmentNumber));
     const existingEquipmentInNew = newEquipmentList.filter(item => existingSet.has(item.equipmentNumber));
     const removedEquipment = existingEquipment.filter(equipNum => !newSet.has(equipNum));
+    
+    console.log(`🆕 New equipment found: ${newEquipment.length}`);
+    console.log(`✅ Existing equipment in new list: ${existingEquipmentInNew.length}`);
+    console.log(`❌ Removed equipment: ${removedEquipment.length}`);
+    
+    // Debug: Show first 5 "new" equipment items
+    if (newEquipment.length > 0) {
+      console.log("🔍 First 5 'new' equipment items:");
+      newEquipment.slice(0, 5).forEach(item => {
+        console.log(`   ${item.equipmentNumber} - ${item.description} (${item.commissioning})`);
+      });
+    }
     
     return {
       newEquipment,
