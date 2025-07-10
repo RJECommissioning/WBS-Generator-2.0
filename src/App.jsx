@@ -665,26 +665,42 @@ const WBSGenerator = () => {
   };
 
   const generateMissingEquipmentWBS = (newEquipmentList) => {
+    console.log("🔧 DEBUG: Missing Equipment WBS Generation Started");
+    console.log(`📦 New equipment list received: ${newEquipmentList.length} items`);
+    
     if (!missingEquipmentConfig.existingWbsNodes) {
+      console.log("❌ No existing WBS structure loaded");
       alert('Please load the existing WBS structure first (Step 1)');
       return;
     }
 
+    console.log(`🏗️ Existing WBS nodes: ${missingEquipmentConfig.existingWbsNodes.length} nodes`);
+
     const existingWbsNodes = missingEquipmentConfig.existingWbsNodes;
     const existingEquipmentNumbers = extractEquipmentNumbers(existingWbsNodes);
+    
+    console.log(`🔢 Extracted equipment numbers from WBS: ${existingEquipmentNumbers.length}`);
+    console.log("🔍 First 10 extracted equipment numbers:");
+    existingEquipmentNumbers.slice(0, 10).forEach(num => console.log(`   ${num}`));
     
     const analysis = compareEquipmentLists(existingEquipmentNumbers, newEquipmentList);
     setMissingEquipmentAnalysis(analysis);
     
     const newCommissionedEquipment = analysis.newEquipment.filter(item => item.commissioning === 'Y');
     
+    console.log(`✅ Analysis complete - New commissioned equipment: ${newCommissionedEquipment.length}`);
+    console.log(`⏳ New TBC equipment: ${analysis.newEquipment.filter(item => item.commissioning === 'TBC').length}`);
+    
     if (newCommissionedEquipment.length === 0 && analysis.newEquipment.filter(item => item.commissioning === 'TBC').length === 0) {
+      console.log("✅ No new equipment found - all equipment exists in WBS structure");
       alert('No new equipment found. All equipment already exists in the WBS structure.');
       setWbsVisualization([]);
       setWbsOutput([]);
       return;
     }
 
+    console.log("🏗️ Building new WBS nodes for missing equipment...");
+    
     const newWbsNodes = [];
     const completeVisualizationNodes = [];
     
@@ -696,6 +712,8 @@ const WBSGenerator = () => {
       });
     });
     
+    console.log(`📋 Added ${existingWbsNodes.length} existing nodes to visualization`);
+    
     // Process new commissioned equipment
     newCommissionedEquipment.forEach(equipment => {
       const categoryCode = determineCategoryCode(equipment);
@@ -706,7 +724,7 @@ const WBSGenerator = () => {
       );
       
       if (!existingSubsystemNode) {
-        console.warn(`Subsystem not found for equipment ${equipment.equipmentNumber}: ${subsystemName}`);
+        console.warn(`⚠️ Subsystem not found for equipment ${equipment.equipmentNumber}: ${subsystemName}`);
         return;
       }
       
@@ -716,7 +734,7 @@ const WBSGenerator = () => {
       );
       
       if (!existingCategoryNode) {
-        console.warn(`Category not found for equipment ${equipment.equipmentNumber}: ${categoryCode}`);
+        console.warn(`⚠️ Category not found for equipment ${equipment.equipmentNumber}: ${categoryCode}`);
         return;
       }
       
@@ -756,6 +774,8 @@ const WBSGenerator = () => {
     // Handle new TBC equipment
     const newTbcEquipment = analysis.newEquipment.filter(item => item.commissioning === 'TBC');
     if (newTbcEquipment.length > 0) {
+      console.log(`⏳ Processing ${newTbcEquipment.length} TBC equipment items`);
+      
       let tbcNode = existingWbsNodes.find(node => 
         node.wbs_name.includes('TBC - Equipment To Be Confirmed')
       );
@@ -789,11 +809,17 @@ const WBSGenerator = () => {
       });
     }
     
+    console.log(`🎯 Final results:`);
+    console.log(`   New WBS nodes created: ${newWbsNodes.length}`);
+    console.log(`   Complete visualization nodes: ${completeVisualizationNodes.length}`);
+    
     // Set visualization to show complete structure with new items highlighted
     setWbsVisualization(completeVisualizationNodes);
     // Set output to only new items for export
     setWbsOutput(newWbsNodes);
     setProjectName(missingEquipmentConfig.existingProjectName || 'Missing Equipment Update');
+    
+    console.log("✅ Missing equipment WBS generation complete");
   };
 
   const generateModernStructure = (nodes, subsystemId, subsystem, data) => {
