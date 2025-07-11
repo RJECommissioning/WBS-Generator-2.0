@@ -686,14 +686,26 @@ const WBSGenerator = () => {
     const analysis = compareEquipmentLists(existingEquipmentNumbers, newEquipmentList);
     setMissingEquipmentAnalysis(analysis);
     
-    const newCommissionedEquipment = analysis.newEquipment.filter(item => item.commissioning === 'Y');
+    // Only consider equipment that would have been included in original WBS generation
+    const relevantNewEquipment = analysis.newEquipment.filter(item => 
+      item.commissioning === 'Y' || item.commissioning === 'TBC'
+    );
+    
+    console.log(`🎯 Filtering to relevant equipment only:`);
+    console.log(`   Total new items found: ${analysis.newEquipment.length}`);
+    console.log(`   Commissioned (Y): ${analysis.newEquipment.filter(item => item.commissioning === 'Y').length}`);
+    console.log(`   TBC: ${analysis.newEquipment.filter(item => item.commissioning === 'TBC').length}`);
+    console.log(`   Not commissioned (N): ${analysis.newEquipment.filter(item => item.commissioning === 'N').length}`);
+    console.log(`   Relevant for WBS: ${relevantNewEquipment.length}`);
+    
+    const newCommissionedEquipment = relevantNewEquipment.filter(item => item.commissioning === 'Y');
     
     console.log(`✅ Analysis complete - New commissioned equipment: ${newCommissionedEquipment.length}`);
-    console.log(`⏳ New TBC equipment: ${analysis.newEquipment.filter(item => item.commissioning === 'TBC').length}`);
+    console.log(`⏳ New TBC equipment: ${relevantNewEquipment.filter(item => item.commissioning === 'TBC').length}`);
     
-    if (newCommissionedEquipment.length === 0 && analysis.newEquipment.filter(item => item.commissioning === 'TBC').length === 0) {
-      console.log("✅ No new equipment found - all equipment exists in WBS structure");
-      alert('No new equipment found. All equipment already exists in the WBS structure.');
+    if (relevantNewEquipment.length === 0) {
+      console.log("✅ No new relevant equipment found - all commissioned/TBC equipment exists in WBS structure");
+      alert('No new equipment found. All commissioned and TBC equipment already exists in the WBS structure.');
       setWbsVisualization([]);
       setWbsOutput([]);
       return;
@@ -750,7 +762,7 @@ const WBSGenerator = () => {
       newWbsNodes.push(newEquipmentNode);
       completeVisualizationNodes.push(newEquipmentNode);
       
-      const childEquipment = analysis.newEquipment.filter(child => 
+      const childEquipment = relevantNewEquipment.filter(child => 
         child.parentEquipmentNumber === equipment.equipmentNumber && 
         child.commissioning === 'Y'
       );
@@ -772,7 +784,7 @@ const WBSGenerator = () => {
     });
     
     // Handle new TBC equipment
-    const newTbcEquipment = analysis.newEquipment.filter(item => item.commissioning === 'TBC');
+    const newTbcEquipment = relevantNewEquipment.filter(item => item.commissioning === 'TBC');
     if (newTbcEquipment.length > 0) {
       console.log(`⏳ Processing ${newTbcEquipment.length} TBC equipment items`);
       
@@ -1466,9 +1478,9 @@ const WBSGenerator = () => {
                 </div>
                 <div className="text-center p-3 rounded-lg" style={{ backgroundColor: `${rjeColors.darkBlue}20` }}>
                   <div className="text-2xl font-bold text-white" style={{ backgroundColor: rjeColors.darkBlue }}>
-                    {missingEquipmentAnalysis.removedEquipment.length}
+                    {missingEquipmentAnalysis.newEquipment.filter(item => item.commissioning === 'N').length}
                   </div>
-                  <div className="text-sm text-gray-600">Removed Equipment</div>
+                  <div className="text-sm text-gray-600">Non-Commissioned (N)</div>
                 </div>
               </div>
             ) : (
@@ -1543,7 +1555,7 @@ const WBSGenerator = () => {
                     New Equipment Preview
                   </h4>
                   <span className="text-xs text-gray-500">
-                    New Equipment: {missingEquipmentAnalysis.newEquipment.filter(item => item.commissioning === 'Y').length + missingEquipmentAnalysis.newEquipment.filter(item => item.commissioning === 'TBC').length}
+                    New Equipment: {missingEquipmentAnalysis.newEquipment.filter(item => item.commissioning === 'Y' || item.commissioning === 'TBC').length}
                   </span>
                 </div>
                 <div className="text-sm">
