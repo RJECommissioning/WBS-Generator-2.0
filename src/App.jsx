@@ -86,28 +86,95 @@ const WBSGenerator = () => {
     '99': 'Unrecognised Equipment'
   };
 
-  const extractEquipmentNumbers = (wbsNodes) => {
-    const equipmentNumbers = new Set();
-    wbsNodes.forEach(node => {
-      if (node.wbs_name && node.wbs_name.includes('|')) {
-        const equipmentNumber = node.wbs_name.split('|')[0].trim();
-        if (equipmentNumber && 
-            !equipmentNumber.match(/^S\d+$/) && // Only exclude subsystem patterns like S1, S2, etc.
-            !equipmentNumber.match(/^M$/) && // Only exclude exact "M" (milestones)
-            !equipmentNumber.match(/^P$/) && // Only exclude exact "P" (prerequisites)
-            !equipmentNumber.match(/^\d+$/) && // Exclude pure numbers like 01, 02, etc.
-            !equipmentNumber.includes('Phase') &&
-            !equipmentNumber.includes('TBC') &&
-            !equipmentNumber.includes('Test') &&
-            !equipmentNumber.includes('Panel') &&
-            !equipmentNumber.includes('Pad')) {
-          equipmentNumbers.add(equipmentNumber);
+ const extractEquipmentNumbers = (wbsNodes) => {
+  console.log('🔧 FIXED: Equipment Extraction Process');
+  console.log('====================================');
+  
+  const equipmentNumbers = [];
+  let processedCount = 0;
+  let skippedCount = 0;
+  
+  // Define WBS structure patterns that should be IGNORED
+  const ignorePatterns = [
+    // Category patterns
+    /^\d{2}\s*\|\s*/, // 01 | Preparations, 02 | Protection, etc.
+    /^M\s*\|\s*/, // M | Milestones
+    /^P\s*\|\s*/, // P | Pre-requisites
+    /^S\d+\s*\|\s*/, // S1 | Subsystem, S2 | Subsystem, etc.
+    /^TBC\s*-\s*/, // TBC - Equipment To Be Confirmed
+    // Standard WBS elements
+    /^Test bay$/, 
+    /^Panel Shop$/, 
+    /^Pad$/, 
+    /^Phase 1$/, 
+    /^Phase 2$/,
+    // Project name patterns
+    /^\d{4}.*/ // Project codes like 5737
+  ];
+  
+  // Define what actual equipment patterns look like
+  const equipmentPatterns = [
+    /^[A-Z]+\d+/, // T11, HN10, etc.
+    /^[+-][A-Z]+\d+/, // +UH101, -F102, +WA10, etc.
+    /^[A-Z]+\d+-[A-Z0-9-]+/, // EG01-1000-01, etc.
+    /^[A-Z]+\d+\/[A-Z]/ // -F01/X, etc.
+  ];
+  
+  wbsNodes.forEach(node => {
+    if (node.wbs_name && node.wbs_name.includes('|')) {
+      const parts = node.wbs_name.split('|');
+      if (parts.length >= 2) {
+        const firstPart = parts[0].trim();
+        const secondPart = parts[1].trim();
+        
+        // Check if this is a WBS structure element that should be ignored
+        const shouldIgnore = ignorePatterns.some(pattern => 
+          pattern.test(firstPart) || pattern.test(node.wbs_name)
+        );
+        
+        if (shouldIgnore) {
+          skippedCount++;
+          if (skippedCount <= 5) {
+            console.log(`   🚫 Ignored WBS structure: "${node.wbs_name}"`);
+          }
+          return; // Skip this node
+        }
+        
+        // Check if first part looks like actual equipment
+        if (equipmentPatterns.some(pattern => pattern.test(firstPart))) {
+          equipmentNumbers.push(firstPart);
+          processedCount++;
+          if (processedCount <= 10) {
+            console.log(`   ✅ Extracted equipment: "${firstPart}" from "${node.wbs_name}"`);
+          }
+        } 
+        // Check if second part looks like actual equipment
+        else if (equipmentPatterns.some(pattern => pattern.test(secondPart))) {
+          equipmentNumbers.push(secondPart);
+          processedCount++;
+          if (processedCount <= 10) {
+            console.log(`   ✅ Extracted equipment: "${secondPart}" from "${node.wbs_name}"`);
+          }
+        } else {
+          skippedCount++;
+          if (skippedCount <= 5) {
+            console.log(`   🚫 Skipped: "${node.wbs_name}" (no equipment pattern)`);
+          }
         }
       }
-    });
-    return Array.from(equipmentNumbers);
-  };
-
+    }
+  });
+  
+  const uniqueEquipment = [...new Set(equipmentNumbers)];
+  
+  console.log(`\n📊 FIXED Extraction Summary:`);
+  console.log(`   Total WBS nodes processed: ${wbsNodes.length}`);
+  console.log(`   Equipment extracted: ${uniqueEquipment.length}`);
+  console.log(`   WBS structure elements skipped: ${skippedCount}`);
+  console.log(`   Duplicate equipment removed: ${equipmentNumbers.length - uniqueEquipment.length}`);
+  
+  return uniqueEquipment;
+};
   const compareEquipmentLists = (existingEquipment, newEquipmentList) => {
     const existingSet = new Set(existingEquipment);
     const newSet = new Set(newEquipmentList.map(item => item.equipmentNumber));
