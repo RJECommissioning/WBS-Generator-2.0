@@ -80,46 +80,17 @@ const WBSTreeVisualization = ({ wbsNodes = [] }) => {
     setExpandedNodes(new Set());
   };
 
-  // Get color for different categories
-  const getNodeBackgroundColor = (wbsName) => {
-    if (wbsName.includes('01 |')) return rjeColors.lightGreen + '20';
-    if (wbsName.includes('02 |')) return rjeColors.mediumGreen + '20';
-    if (wbsName.includes('03 |')) return rjeColors.darkGreen + '20';
-    if (wbsName.includes('04 |')) return rjeColors.teal + '20';
-    if (wbsName.includes('05 |')) return rjeColors.blue + '20';
-    if (wbsName.includes('06 |')) return rjeColors.darkBlue + '20';
-    if (wbsName.includes('07 |')) return rjeColors.lightGreen + '25';
-    if (wbsName.includes('08 |')) return rjeColors.mediumGreen + '25';
-    if (wbsName.includes('09 |')) return rjeColors.darkGreen + '25';
-    if (wbsName.includes('10 |')) return rjeColors.teal + '25';
-    if (wbsName.includes('99 |')) return rjeColors.blue + '25';
-    if (wbsName.includes('M |')) return rjeColors.mediumGreen + '30';
-    if (wbsName.includes('P |')) return rjeColors.teal + '30';
-    if (wbsName.includes('S') && wbsName.includes('|')) return rjeColors.darkBlue + '30';
-    if (wbsName.includes('TBC')) return rjeColors.blue + '15';
-    return 'transparent';
-  };
-
-  // Get icon for node type
-  const getNodeIcon = (node) => {
-    if (node.wbs_name.includes('|')) {
-      if (node.wbs_name.includes('01 |')) return '🔧';
-      if (node.wbs_name.includes('02 |')) return '🛡️';
-      if (node.wbs_name.includes('03 |')) return '⚡';
-      if (node.wbs_name.includes('04 |')) return '🔌';
-      if (node.wbs_name.includes('05 |')) return '🔄';
-      if (node.wbs_name.includes('06 |')) return '🔋';
-      if (node.wbs_name.includes('07 |')) return '🌍';
-      if (node.wbs_name.includes('08 |')) return '🏢';
-      if (node.wbs_name.includes('09 |')) return '🔗';
-      if (node.wbs_name.includes('10 |')) return '⚙️';
-      if (node.wbs_name.includes('99 |')) return '❓';
-      if (node.wbs_name.includes('M |')) return '🎯';
-      if (node.wbs_name.includes('P |')) return '📋';
-      if (node.wbs_name.includes('S') && node.wbs_name.includes('|')) return '🏗️';
-      if (node.wbs_name.includes('TBC')) return '❓';
-    }
-    return '📦';
+  // Get color based on hierarchical level
+  const getNodeBackgroundColor = (level) => {
+    const levelColors = [
+      rjeColors.darkBlue + '30',    // Level 0 - Root
+      rjeColors.blue + '20',        // Level 1 - Categories, Milestones, Pre-req, Subsystems
+      rjeColors.lightGreen + '15',  // Level 2 - Equipment/Sub-categories
+      rjeColors.teal + '10',        // Level 3 - Sub-equipment
+      '#f8f9fa',                    // Level 4+ - Light gray
+    ];
+    
+    return levelColors[Math.min(level, levelColors.length - 1)];
   };
 
   // Get status indicator
@@ -159,7 +130,7 @@ const WBSTreeVisualization = ({ wbsNodes = [] }) => {
           }`}
           style={{ 
             marginLeft: `${level * 20}px`,
-            backgroundColor: getNodeBackgroundColor(node.wbs_name),
+            backgroundColor: getNodeBackgroundColor(level),
             borderLeftColor: level === 0 ? rjeColors.darkBlue : 'transparent'
           }}
           onClick={() => hasChildren && toggleNode(node.wbs_code)}
@@ -176,15 +147,11 @@ const WBSTreeVisualization = ({ wbsNodes = [] }) => {
               <div className="w-4 h-4 mr-2" />
             )}
             
-            {/* Node Icon */}
-            <span className="text-sm mr-2">{getNodeIcon(node)}</span>
-            
             {/* WBS Code */}
             <span 
-              className="text-xs font-mono font-medium mr-3 px-2 py-1 rounded flex items-center"
+              className="text-xs font-mono font-medium mr-3 px-2 py-1 rounded"
               style={{ backgroundColor: rjeColors.darkBlue, color: 'white' }}
             >
-              <Hash className="w-3 h-3 mr-1" />
               {node.wbs_code}
             </span>
             
