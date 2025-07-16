@@ -1,4 +1,4 @@
-\// src/components/modes/MissingEquipment.jsx
+// src/components/modes/MissingEquipment.jsx
 
 import React, { useRef, useState } from 'react';
 import { Upload, FileText, AlertTriangle, CheckCircle, Eye, EyeOff } from 'lucide-react';
