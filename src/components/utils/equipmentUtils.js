@@ -173,20 +173,24 @@ export const processEquipmentFile = async (file) => {
 };
 
 /**
- * FIXED: Extracts equipment numbers from existing WBS structure
+ * ENHANCED: Extracts equipment numbers from existing WBS structure with extensive debugging
  * @param {Array} wbsNodes - Array of WBS nodes
  * @returns {Object} - Object with equipmentNumbers array and existingSubsystems map
  */
 export const extractEquipmentFromWBS = (wbsNodes) => {
-  console.log('🔧 FIXED: Equipment Extraction from WBS');
-  console.log('=======================================');
+  console.log('🔧 ENHANCED: Equipment Extraction from WBS');
+  console.log('==========================================');
   
   const equipmentNumbers = [];
   const existingSubsystems = new Map();
-  let processedCount = 0;
-  let skippedCount = 0;
+  const debugInfo = {
+    processed: [],
+    skipped: [],
+    invalid: [],
+    duplicates: []
+  };
   
-  // EXACT WBS structure elements to skip (be very specific)
+  // EXACT WBS structure elements to skip
   const wbsStructureElements = new Set([
     'Test bay', 'Panel Shop', 'Pad', 'Phase 1', 'Phase 2',
     'Preparations and set-up', 'Protection Panels', 'HV Switchboards',
@@ -195,17 +199,54 @@ export const extractEquipmentFromWBS = (wbsNodes) => {
     'Unrecognised Equipment', 'Milestones', 'Pre-requisites'
   ]);
   
-  // WBS structure PATTERNS (be more specific)
+  // WBS structure PATTERNS - more precise
   const wbsPatterns = [
     /^M\s*\|\s*Milestones?$/i,
     /^P\s*\|\s*Pre-requisites?$/i,
-    /^S\d+\s*\|\s*.+$/,  // Subsystem headers like "S1 | +Z01 - Subsystem Name"
+    /^S\d+\s*\|\s*.+$/,
     /^\d{2}\s*\|\s*(Preparations|Protection|HV|LV|Transformers|Battery|Earthing|Building|Interface|Ancillary|Unrecognised)/i,
     /^TBC\s*-\s*Equipment/i,
-    /^\d{4}\s+/  // Project codes like "5737 Project Name"
+    /^\d{4}\s+/
   ];
   
-  wbsNodes.forEach(node => {
+  // Helper function to extract equipment from a WBS name
+  const extractEquipmentFromName = (wbsName) => {
+    // Try multiple separator patterns in order of likelihood
+    const separators = [
+      { pattern: ' | ', name: 'pipe with spaces' },
+      { pattern: ' - ', name: 'dash with spaces' },
+      { pattern: '|', name: 'pipe no spaces' },
+      { pattern: '-', name: 'dash no spaces' },
+      { pattern: ' : ', name: 'colon with spaces' },
+      { pattern: ':', name: 'colon no spaces' },
+      { pattern: ' / ', name: 'slash with spaces' },
+      { pattern: '/', name: 'slash no spaces' }
+    ];
+    
+    for (const sep of separators) {
+      if (wbsName.includes(sep.pattern)) {
+        const parts = wbsName.split(sep.pattern);
+        if (parts.length >= 2) {
+          const equipmentNumber = parts[0].trim();
+          const description = parts.slice(1).join(sep.pattern).trim();
+          
+          if (equipmentNumber && description) {
+            return {
+              equipmentNumber,
+              description,
+              separator: sep.name,
+              originalName: wbsName
+            };
+          }
+        }
+      }
+    }
+    
+    return null;
+  };
+  
+  // Process each WBS node
+  wbsNodes.forEach((node, index) => {
     const wbsName = node.wbs_name;
     
     // Build subsystem mapping
@@ -213,85 +254,128 @@ export const extractEquipmentFromWBS = (wbsNodes) => {
       const subsystemName = wbsName.split('|')[1]?.trim();
       if (subsystemName) {
         existingSubsystems.set(subsystemName, node.wbs_code);
-        // Add variations
         const cleanName = subsystemName.replace(/^\+/, '').trim();
         existingSubsystems.set(cleanName, node.wbs_code);
         existingSubsystems.set(`+${cleanName}`, node.wbs_code);
       }
     }
     
-    // Skip exact matches
+    // Skip exact WBS structure matches
     if (wbsStructureElements.has(wbsName)) {
-      skippedCount++;
-      if (skippedCount <= 5) {
-        console.log(`   🚫 Skipped exact match: "${wbsName}"`);
-      }
+      debugInfo.skipped.push({
+        wbsName,
+        reason: 'exact WBS structure match',
+        wbsCode: node.wbs_code
+      });
       return;
     }
     
-    // Skip pattern matches
+    // Skip WBS pattern matches
     if (wbsPatterns.some(pattern => pattern.test(wbsName))) {
-      skippedCount++;
-      if (skippedCount <= 5) {
-        console.log(`   🚫 Skipped pattern match: "${wbsName}"`);
-      }
+      debugInfo.skipped.push({
+        wbsName,
+        reason: 'WBS pattern match',
+        wbsCode: node.wbs_code
+      });
       return;
     }
     
-    // FIXED: Extract equipment - try multiple separators
-    const separators = [' | ', ' - ', '|', '-'];
-    let equipmentFound = false;
+    // Try to extract equipment
+    const extracted = extractEquipmentFromName(wbsName);
     
-    for (const separator of separators) {
-      if (wbsName.includes(separator)) {
-        const parts = wbsName.split(separator);
-        if (parts.length >= 2) {
-          const equipmentNumber = parts[0].trim();
-          const description = parts.slice(1).join(separator).trim();
-          
-          // FIXED: Better validation - just check it's not empty and not too generic
-          if (equipmentNumber && 
-              equipmentNumber.length >= 1 && 
-              equipmentNumber.length <= 20 &&
-              !equipmentNumber.toLowerCase().includes('example') &&
-              !equipmentNumber.toLowerCase().includes('test') &&
-              description &&
-              isValidEquipmentNumber(equipmentNumber)) {
-            
-            equipmentNumbers.push(equipmentNumber);
-            processedCount++;
-            equipmentFound = true;
-            
-            if (processedCount <= 10) {
-              console.log(`   ✅ Extracted: "${equipmentNumber}" from "${wbsName}"`);
-            }
-            break; // Found equipment, stop trying other separators
-          }
-        }
+    if (extracted) {
+      const { equipmentNumber, description, separator } = extracted;
+      
+      // Validate equipment number
+      if (!isValidEquipmentNumber(equipmentNumber)) {
+        debugInfo.invalid.push({
+          wbsName,
+          equipmentNumber,
+          description,
+          reason: 'failed validation',
+          wbsCode: node.wbs_code
+        });
+        return;
       }
-    }
-    
-    if (!equipmentFound) {
-      skippedCount++;
-      if (skippedCount <= 5) {
-        console.log(`   🚫 No equipment found in: "${wbsName}"`);
+      
+      // Check for duplicates
+      if (equipmentNumbers.includes(equipmentNumber)) {
+        debugInfo.duplicates.push({
+          wbsName,
+          equipmentNumber,
+          description,
+          wbsCode: node.wbs_code
+        });
+        return;
       }
+      
+      // Add to results
+      equipmentNumbers.push(equipmentNumber);
+      debugInfo.processed.push({
+        wbsName,
+        equipmentNumber,
+        description,
+        separator,
+        wbsCode: node.wbs_code
+      });
+      
+      // Show first 10 extractions
+      if (debugInfo.processed.length <= 10) {
+        console.log(`   ✅ Extracted: "${equipmentNumber}" from "${wbsName}" (${separator})`);
+      }
+    } else {
+      debugInfo.skipped.push({
+        wbsName,
+        reason: 'no equipment pattern found',
+        wbsCode: node.wbs_code
+      });
     }
   });
   
-  const uniqueEquipment = [...new Set(equipmentNumbers)];
-  
-  console.log(`\n📊 FIXED Extraction Summary:`);
+  // Enhanced logging
+  console.log(`\n📊 ENHANCED Extraction Summary:`);
   console.log(`   Total WBS nodes processed: ${wbsNodes.length}`);
-  console.log(`   Equipment extracted: ${uniqueEquipment.length}`);
-  console.log(`   Items processed: ${processedCount}`);
-  console.log(`   Items skipped: ${skippedCount}`);
-  console.log(`   Duplicates removed: ${equipmentNumbers.length - uniqueEquipment.length}`);
+  console.log(`   Equipment extracted: ${equipmentNumbers.length}`);
+  console.log(`   Items processed: ${debugInfo.processed.length}`);
+  console.log(`   Items skipped: ${debugInfo.skipped.length}`);
+  console.log(`   Items invalid: ${debugInfo.invalid.length}`);
+  console.log(`   Duplicates found: ${debugInfo.duplicates.length}`);
   console.log(`   Subsystems found: ${existingSubsystems.size}`);
   
+  // Show breakdown of skipped items
+  if (debugInfo.skipped.length > 0) {
+    console.log(`\n🔍 Skipped Items Breakdown:`);
+    const skipReasons = {};
+    debugInfo.skipped.forEach(item => {
+      skipReasons[item.reason] = (skipReasons[item.reason] || 0) + 1;
+    });
+    Object.entries(skipReasons).forEach(([reason, count]) => {
+      console.log(`   ${reason}: ${count} items`);
+    });
+  }
+  
+  // Show some examples of skipped items that might be equipment
+  const potentialEquipment = debugInfo.skipped.filter(item => 
+    item.reason === 'no equipment pattern found' && 
+    item.wbsName.length > 0 && 
+    !item.wbsName.match(/^\d{2}\s*\|/) &&
+    !item.wbsName.match(/^[MPS]\d*\s*\|/)
+  );
+  
+  if (potentialEquipment.length > 0) {
+    console.log(`\n🚨 Potential Equipment Items Missed (${potentialEquipment.length} items):`);
+    potentialEquipment.slice(0, 10).forEach(item => {
+      console.log(`   ❓ "${item.wbsName}" (${item.wbsCode})`);
+    });
+    if (potentialEquipment.length > 10) {
+      console.log(`   ... and ${potentialEquipment.length - 10} more`);
+    }
+  }
+  
   return { 
-    equipmentNumbers: uniqueEquipment, 
-    existingSubsystems 
+    equipmentNumbers, 
+    existingSubsystems,
+    debugInfo // Return debug info for further analysis
   };
 };
 
@@ -319,6 +403,14 @@ export const compareEquipmentLists = (existingEquipment, newEquipmentList) => {
   console.log(`🆕 New equipment found: ${newEquipment.length}`);
   console.log(`✅ Existing equipment in new list: ${existingEquipmentInNew.length}`);
   console.log(`❌ Removed equipment: ${removedEquipment.length}`);
+  
+  // Show first 10 missing items for debugging
+  if (newEquipment.length > 0) {
+    console.log(`\n🔍 First 10 "new" equipment items:`);
+    newEquipment.slice(0, 10).forEach(item => {
+      console.log(`   🆕 ${item.equipmentNumber} - ${item.description} (${item.commissioning})`);
+    });
+  }
   
   return {
     newEquipment,
