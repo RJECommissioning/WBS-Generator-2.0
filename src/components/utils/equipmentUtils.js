@@ -1,4 +1,4 @@
-// src/utils/equipmentUtils.js
+// src/components/utils/equipmentUtils.js
 
 import { columnMapping, invalidEquipmentPatterns } from './constants';
 
