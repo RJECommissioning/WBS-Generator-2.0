@@ -8,12 +8,26 @@ import { columnMapping, invalidEquipmentPatterns } from './constants';
  * @returns {boolean} - True if valid, false otherwise
  */
 export const isValidEquipmentNumber = (equipmentNumber) => {
-  if (!equipmentNumber || equipmentNumber.length < 2) return false;
+  if (!equipmentNumber || typeof equipmentNumber !== 'string') return false;
   
-  // Check against invalid patterns
-  return !invalidEquipmentPatterns.some(pattern => 
-    equipmentNumber.includes(pattern)
-  );
+  const trimmed = equipmentNumber.trim();
+  if (trimmed.length < 1) return false;
+  
+  // IMPROVED: More specific invalid patterns
+  const specificInvalidPatterns = [
+    /^EXAMPLE/i,
+    /^Lot\s+\d+/i,
+    /^COMBI-/i,
+    /^FREE\s+ISSUE/i,
+    /^Wall\s+Internal/i,
+    /\(Copy\)/i,
+    /^Test\s+bay$/i,
+    /^Panel\s+Shop$/i,
+    /^Pad$/i,
+    /^Phase\s+[12]$/i
+  ];
+  
+  return !specificInvalidPatterns.some(pattern => pattern.test(trimmed));
 };
 
 /**
@@ -159,86 +173,120 @@ export const processEquipmentFile = async (file) => {
 };
 
 /**
- * Extracts equipment numbers from existing WBS structure
+ * FIXED: Extracts equipment numbers from existing WBS structure
  * @param {Array} wbsNodes - Array of WBS nodes
  * @returns {Object} - Object with equipmentNumbers array and existingSubsystems map
  */
 export const extractEquipmentFromWBS = (wbsNodes) => {
-  console.log('🔧 Equipment Extraction from WBS');
-  console.log('================================');
+  console.log('🔧 FIXED: Equipment Extraction from WBS');
+  console.log('=======================================');
   
   const equipmentNumbers = [];
   const existingSubsystems = new Map();
   let processedCount = 0;
   let skippedCount = 0;
   
-  // Standard WBS categories to skip
-  const standardCategories = [
-    'Preparations and set-up', 'Protection Panels', 'HV Switchboards', 
-    'LV Switchboards', 'Transformers', 'Battery Systems', 'Earthing', 
-    'Building Services', 'Interface Testing', 'Ancillary Systems', 
-    'Unrecognised Equipment', 'Milestones', 'Pre-requisites', 
-    'Phase 1', 'Phase 2', 'Test bay', 'Panel Shop', 'Pad'
-  ];
+  // EXACT WBS structure elements to skip (be very specific)
+  const wbsStructureElements = new Set([
+    'Test bay', 'Panel Shop', 'Pad', 'Phase 1', 'Phase 2',
+    'Preparations and set-up', 'Protection Panels', 'HV Switchboards',
+    'LV Switchboards', 'Transformers', 'Battery Systems', 'Earthing',
+    'Building Services', 'Interface Testing', 'Ancillary Systems',
+    'Unrecognised Equipment', 'Milestones', 'Pre-requisites'
+  ]);
   
-  // Pattern to identify WBS structure elements vs equipment
-  const wbsStructurePatterns = [
-    /^\d{2}\s*\|\s*/, // 01 | Preparations, 02 | Protection, etc.
-    /^M\s*\|\s*/, // M | Milestones
-    /^P\s*\|\s*/, // P | Pre-requisites
-    /^S\d+\s*\|\s*/, // S1 | Subsystem, S2 | Subsystem, etc.
-    /^TBC\s*-\s*/, // TBC - Equipment To Be Confirmed
-    /^\d{4}.*/ // Project codes like 5737
+  // WBS structure PATTERNS (be more specific)
+  const wbsPatterns = [
+    /^M\s*\|\s*Milestones?$/i,
+    /^P\s*\|\s*Pre-requisites?$/i,
+    /^S\d+\s*\|\s*.+$/,  // Subsystem headers like "S1 | +Z01 - Subsystem Name"
+    /^\d{2}\s*\|\s*(Preparations|Protection|HV|LV|Transformers|Battery|Earthing|Building|Interface|Ancillary|Unrecognised)/i,
+    /^TBC\s*-\s*Equipment/i,
+    /^\d{4}\s+/  // Project codes like "5737 Project Name"
   ];
   
   wbsNodes.forEach(node => {
     const wbsName = node.wbs_name;
     
-    // Build subsystem mapping first
-    if (wbsName.startsWith('S') && wbsName.includes('|')) {
+    // Build subsystem mapping
+    if (wbsName.match(/^S\d+\s*\|\s*/)) {
       const subsystemName = wbsName.split('|')[1]?.trim();
       if (subsystemName) {
         existingSubsystems.set(subsystemName, node.wbs_code);
-        // Add variations for better matching
+        // Add variations
         const cleanName = subsystemName.replace(/^\+/, '').trim();
         existingSubsystems.set(cleanName, node.wbs_code);
         existingSubsystems.set(`+${cleanName}`, node.wbs_code);
       }
     }
     
-    // Skip standard WBS categories
-    if (standardCategories.some(category => wbsName.includes(category))) {
+    // Skip exact matches
+    if (wbsStructureElements.has(wbsName)) {
       skippedCount++;
+      if (skippedCount <= 5) {
+        console.log(`   🚫 Skipped exact match: "${wbsName}"`);
+      }
       return;
     }
     
-    // Skip WBS structure patterns
-    if (wbsStructurePatterns.some(pattern => pattern.test(wbsName))) {
+    // Skip pattern matches
+    if (wbsPatterns.some(pattern => pattern.test(wbsName))) {
       skippedCount++;
+      if (skippedCount <= 5) {
+        console.log(`   🚫 Skipped pattern match: "${wbsName}"`);
+      }
       return;
     }
     
-    // Extract equipment number from WBS name (format: "EQUIPMENT | Description" or "EQUIPMENT - Description")
-    if (wbsName.includes(' | ') || wbsName.includes(' - ')) {
-      const separator = wbsName.includes(' | ') ? ' | ' : ' - ';
-      const equipmentNumber = wbsName.split(separator)[0]?.trim();
-      
-      if (equipmentNumber && isValidEquipmentNumber(equipmentNumber)) {
-        equipmentNumbers.push(equipmentNumber);
-        processedCount++;
-      } else {
-        skippedCount++;
+    // FIXED: Extract equipment - try multiple separators
+    const separators = [' | ', ' - ', '|', '-'];
+    let equipmentFound = false;
+    
+    for (const separator of separators) {
+      if (wbsName.includes(separator)) {
+        const parts = wbsName.split(separator);
+        if (parts.length >= 2) {
+          const equipmentNumber = parts[0].trim();
+          const description = parts.slice(1).join(separator).trim();
+          
+          // FIXED: Better validation - just check it's not empty and not too generic
+          if (equipmentNumber && 
+              equipmentNumber.length >= 1 && 
+              equipmentNumber.length <= 20 &&
+              !equipmentNumber.toLowerCase().includes('example') &&
+              !equipmentNumber.toLowerCase().includes('test') &&
+              description &&
+              isValidEquipmentNumber(equipmentNumber)) {
+            
+            equipmentNumbers.push(equipmentNumber);
+            processedCount++;
+            equipmentFound = true;
+            
+            if (processedCount <= 10) {
+              console.log(`   ✅ Extracted: "${equipmentNumber}" from "${wbsName}"`);
+            }
+            break; // Found equipment, stop trying other separators
+          }
+        }
+      }
+    }
+    
+    if (!equipmentFound) {
+      skippedCount++;
+      if (skippedCount <= 5) {
+        console.log(`   🚫 No equipment found in: "${wbsName}"`);
       }
     }
   });
   
   const uniqueEquipment = [...new Set(equipmentNumbers)];
   
-  console.log(`📊 Extraction Summary:`);
+  console.log(`\n📊 FIXED Extraction Summary:`);
   console.log(`   Total WBS nodes processed: ${wbsNodes.length}`);
   console.log(`   Equipment extracted: ${uniqueEquipment.length}`);
-  console.log(`   WBS structure elements skipped: ${skippedCount}`);
-  console.log(`   Duplicate equipment removed: ${equipmentNumbers.length - uniqueEquipment.length}`);
+  console.log(`   Items processed: ${processedCount}`);
+  console.log(`   Items skipped: ${skippedCount}`);
+  console.log(`   Duplicates removed: ${equipmentNumbers.length - uniqueEquipment.length}`);
   console.log(`   Subsystems found: ${existingSubsystems.size}`);
   
   return { 
