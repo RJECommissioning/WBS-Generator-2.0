@@ -1,70 +1,167 @@
-// src/components/modes/StartNewProject.jsx
+// src/components/modes/StartNewProject.jsx - Start New Project component
 
-import React, { useRef } from 'react';
+import React, { useState, useRef, useContext } from 'react';
 import { Upload } from 'lucide-react';
-import { rjeColors } from '../utils/constants';
-import { processEquipmentFile } from '../utils/equipmentUtils';
-import { generateNewProjectWBS } from '../utils/wbsUtils';
+import { generateNewProjectWBS } from '../utils/wbsUtils.js';
+
+const rjeColors = {
+  lightGreen: '#B8D582',
+  mediumGreen: '#7DB544',
+  darkGreen: '#4A9B4B',
+  teal: '#2E8B7A',
+  blue: '#1E7FC2',
+  darkBlue: '#0F5A8F'
+};
 
 const StartNewProject = ({ 
-  isProcessing, 
-  setIsProcessing,
   projectName, 
   setProjectName, 
-  setEquipmentData,
-  setWbsOutput,
-  setWbsVisualization,
-  setProjectState
+  setEquipmentData, 
+  setWbsOutput, 
+  setWbsVisualization, 
+  setProjectState, 
+  isProcessing, 
+  setIsProcessing 
 }) => {
   const fileInputRef = useRef(null);
 
+  // FIXED: Updated file upload handler with parent-based categorization
   const handleFileUpload = async (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
     setIsProcessing(true);
     try {
-      console.log('🔄 Processing file:', file.name);
+      console.log(`🔄 Processing file: ${file.name}`);
       
-      // Step 1: Process the equipment file
-      const equipmentList = await processEquipmentFile(file);
-      console.log(`✅ Loaded ${equipmentList.length} equipment items`);
+      let equipmentList = [];
+      
+      if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
+        // Import SheetJS dynamically
+        const XLSX = await import('xlsx');
+        const arrayBuffer = await file.arrayBuffer();
+        const workbook = XLSX.read(arrayBuffer, { cellDates: true });
+        
+        const sheetName = workbook.SheetNames.includes('Equipment_List') 
+          ? 'Equipment_List' 
+          : workbook.SheetNames[0];
+        
+        const worksheet = workbook.Sheets[sheetName];
+        const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+        
+        const headerRow = jsonData[0];
+        const dataRows = jsonData.slice(1);
+        
+        const columnMapping = {
+          'Subsystem': 'subsystem',
+          'Parent Equipment Number': 'parentEquipmentNumber',
+          'Equipment Number': 'equipmentNumber',
+          'Description': 'description',
+          'Commissioning (Y/N)': 'commissioning',
+          'Project': 'project',
+          'Item No.': 'itemNo',
+          'PLU': 'plu',
+          'Supplier': 'supplier',
+          'Manufacturer': 'manufacturer',
+          'Model Number': 'modelNumber',
+          'Test Code': 'testCode',
+          'Comments': 'comments',
+          'Drawings': 'drawings'
+        };
+        
+        equipmentList = dataRows.map(row => {
+          const equipment = {};
+          headerRow.forEach((header, index) => {
+            const mappedField = columnMapping[header];
+            if (mappedField) {
+              equipment[mappedField] = row[index] || '';
+            }
+          });
+          return equipment;
+        }).filter(item => 
+          item.equipmentNumber && 
+          item.subsystem && 
+          item.description && 
+          item.commissioning
+        );
+        
+      } else if (file.name.endsWith('.csv')) {
+        // Handle CSV files
+        const text = await file.text();
+        const lines = text.split('\n');
+        const delimiter = lines[0].includes('\t') ? '\t' : ',';
+        const headers = lines[0].split(delimiter).map(h => h.trim().replace(/"/g, ''));
+        
+        equipmentList = lines.slice(1).map(line => {
+          const values = line.split(delimiter).map(v => v.trim().replace(/"/g, ''));
+          const equipment = {};
+          
+          headers.forEach((header, index) => {
+            const headerLower = header.toLowerCase();
+            if (headerLower.includes('subsystem')) {
+              equipment.subsystem = values[index] || '';
+            } else if (headerLower.includes('parent') && headerLower.includes('equipment')) {
+              equipment.parentEquipmentNumber = values[index] || '';
+            } else if (headerLower.includes('equipment') && headerLower.includes('number')) {
+              equipment.equipmentNumber = values[index] || '';
+            } else if (headerLower.includes('description')) {
+              equipment.description = values[index] || '';
+            } else if (headerLower.includes('commissioning')) {
+              equipment.commissioning = values[index];
+            }
+          });
+          
+          return equipment;
+        }).filter(item => 
+          item.equipmentNumber && 
+          item.subsystem && 
+          item.description && 
+          item.commissioning
+        );
+        
+      } else {
+        throw new Error('Unsupported file format. Please use .xlsx, .xls, or .csv files.');
+      }
       
       if (equipmentList.length === 0) {
         alert('No valid equipment found. Please ensure your file contains the required columns: Subsystem, Parent Equipment Number, Equipment Number, Description, Commissioning (Y/N)');
         return;
       }
-
-      // Step 2: Generate WBS structure
+      
+      // Log processing summary
+      const totalRows = equipmentList.length;
+      const validItems = equipmentList.filter(item => item.equipmentNumber && item.subsystem && item.description && item.commissioning);
+      const commissionedY = validItems.filter(item => item.commissioning === 'Y');
+      const commissionedTBC = validItems.filter(item => item.commissioning === 'TBC');
+      const notCommissioned = validItems.filter(item => item.commissioning === 'N');
+      
+      console.log('📊 Equipment Processing Summary:');
+      console.log(`   Total rows processed: ${totalRows}`);
+      console.log(`   Valid equipment items: ${validItems.length}`);
+      console.log(`   Commissioned (Y): ${commissionedY.length}`);
+      console.log(`   TBC: ${commissionedTBC.length}`);
+      console.log(`   Not commissioned (N): ${notCommissioned.length}`);
+      console.log(`✅ Loaded ${validItems.length} equipment items`);
+      
+      setEquipmentData(validItems);
+      
+      // FIXED: Call the updated WBS generation function
       console.log('🏗️ Generating WBS structure...');
-      const wbsResult = generateNewProjectWBS(equipmentList, projectName);
+      const result = generateWBS(validItems, projectName, null, 'new');
       
-      console.log(`✅ Generated ${wbsResult.allNodes.length} WBS nodes`);
+      // Set the results
+      setWbsVisualization(result.wbsVisualization);
+      setWbsOutput(result.wbsOutput);
+      setProjectState(result.projectState);
       
-      // Step 3: Update parent component state
-      setEquipmentData(equipmentList);
-      setWbsOutput(wbsResult.allNodes);
-      setWbsVisualization(wbsResult.allNodes);
-      setProjectState(wbsResult.newProjectState);
-      
+      console.log(`✅ Generated ${result.wbsOutput.length} WBS nodes`);
       console.log('🎉 WBS generation complete!');
       
-      // Step 4: Show success message
-      const commissionedCount = equipmentList.filter(item => item.commissioning === 'Y').length;
-      const tbcCount = equipmentList.filter(item => item.commissioning === 'TBC').length;
-      const excludedCount = equipmentList.filter(item => item.commissioning === 'N').length;
-      
-      alert(`✅ WBS Generated Successfully!\n\n📊 Summary:\n• ${wbsResult.allNodes.length} WBS nodes created\n• ${commissionedCount} commissioned equipment (Y)\n• ${tbcCount} TBC equipment\n• ${excludedCount} excluded equipment (N)\n\nScroll down to see the WBS structure!`);
-      
     } catch (error) {
-      console.error('❌ File processing error:', error);
-      alert(`❌ Error processing file: ${error.message}\n\nPlease ensure your file contains the required columns:\n• Subsystem\n• Parent Equipment Number\n• Equipment Number\n• Description\n• Commissioning (Y/N)`);
+      console.error('File processing error:', error);
+      alert('Error processing file. Please ensure the file contains the required columns: Subsystem, Parent Equipment Number, Equipment Number, Description, Commissioning (Y/N)');
     } finally {
       setIsProcessing(false);
-      // Clear the file input so the same file can be uploaded again
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
     }
   };
 
@@ -83,8 +180,8 @@ const StartNewProject = ({
           <li>• <strong>Required columns:</strong> Subsystem, Parent Equipment Number, Equipment Number, Description, Commissioning (Y/N)</li>
           <li>• System will create fresh WBS structure</li>
           <li>• Equipment will be categorized into numbered sections (01-10, 99)</li>
+          <li>• <strong>FIXED:</strong> Child equipment inherits parent's category</li>
           <li>• Only commissioned equipment (Y) will be included</li>
-          <li>• TBC equipment will be placed in separate section</li>
         </ul>
       </div>
 
@@ -99,33 +196,19 @@ const StartNewProject = ({
           className="w-full p-3 border-2 rounded-lg focus:outline-none"
           style={{ borderColor: rjeColors.lightGreen }}
           placeholder="Enter your project name..."
-          disabled={isProcessing}
         />
       </div>
 
       <div className="border-2 border-dashed rounded-lg p-8 text-center" style={{ borderColor: rjeColors.mediumGreen }}>
         <Upload className="w-12 h-12 mx-auto mb-4" style={{ color: rjeColors.mediumGreen }} />
         <p className="text-lg font-medium mb-2">Upload Equipment List</p>
-        <p className="text-gray-600 mb-4">Excel (.xlsx, .xls) or CSV files supported</p>
-        
-        {isProcessing && (
-          <div className="mb-4 p-3 rounded-lg" style={{ backgroundColor: rjeColors.blue + '15' }}>
-            <p className="text-sm font-medium text-blue-800">
-              🔄 Processing your equipment file...
-            </p>
-            <p className="text-xs text-blue-600 mt-1">
-              This may take a few moments for large files
-            </p>
-          </div>
-        )}
-        
+        <p className="text-gray-600 mb-4">Excel (.xlsx) or CSV files supported</p>
         <input
           ref={fileInputRef}
           type="file"
-          accept=".csv,.xlsx,.xls"
+          accept=".csv,.xlsx,.json"
           onChange={handleFileUpload}
           className="hidden"
-          disabled={isProcessing}
         />
         <button
           onClick={() => fileInputRef.current?.click()}
@@ -135,19 +218,13 @@ const StartNewProject = ({
         >
           {isProcessing ? 'Processing Equipment List...' : 'Choose Equipment File'}
         </button>
-        
-        <div className="mt-4 text-xs text-gray-500">
-          <p>📋 <strong>Required columns:</strong> Subsystem, Parent Equipment Number, Equipment Number, Description, Commissioning (Y/N)</p>
-          <p>💡 <strong>Optional columns:</strong> PLU, Supplier, Manufacturer, etc.</p>
-        </div>
       </div>
 
       {isProcessing && (
-        <div className="mt-4 p-4 rounded-lg" style={{ backgroundColor: rjeColors.lightGreen + '10' }}>
-          <div className="flex items-center">
-            <div className="animate-spin rounded-full h-4 w-4 border-2 border-gray-400 border-t-blue-600 mr-3"></div>
-            <span className="text-sm text-gray-700">Processing equipment list and generating WBS structure...</span>
-          </div>
+        <div className="mt-4 p-4 rounded-lg" style={{ backgroundColor: rjeColors.lightGreen + '20' }}>
+          <p className="text-sm text-gray-700">
+            <strong>🔄 Processing...</strong> Using enhanced parent-based categorization to ensure proper equipment hierarchy.
+          </p>
         </div>
       )}
     </div>
