@@ -1,5 +1,3 @@
-// src/components/modes/MissingEquipment.jsx
-
 import React, { useRef, useState } from 'react';
 import { Upload, FileText, AlertTriangle, CheckCircle, Eye, EyeOff } from 'lucide-react';
 import { rjeColors } from '../utils/constants';
@@ -26,7 +24,6 @@ const MissingEquipment = ({
   const [step1Complete, setStep1Complete] = useState(false);
   const [step2Complete, setStep2Complete] = useState(false);
 
-  // Handle WBS structure file upload (Step 1)
   const handleWBSStructureUpload = async (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -39,7 +36,6 @@ const MissingEquipment = ({
       let projectName = 'Missing Equipment Update';
 
       if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
-        // Handle Excel files
         const XLSX = await import('xlsx');
         const arrayBuffer = await file.arrayBuffer();
         const workbook = XLSX.read(arrayBuffer, { cellDates: true });
@@ -48,7 +44,7 @@ const MissingEquipment = ({
         const worksheet = workbook.Sheets[sheetName];
         const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
         
-        const dataRows = jsonData.slice(1); // Skip header
+        const dataRows = jsonData.slice(1);
         
         wbsData = dataRows.map(row => ({
           wbs_code: row[0]?.toString() || '',
@@ -57,7 +53,6 @@ const MissingEquipment = ({
         })).filter(item => item.wbs_code && item.wbs_name);
         
       } else if (file.name.endsWith('.csv')) {
-        // Handle CSV files
         const text = await file.text();
         const lines = text.split('\n');
         const delimiter = lines[0].includes('\t') ? '\t' : ',';
@@ -74,13 +69,11 @@ const MissingEquipment = ({
         throw new Error('Unsupported file format. Please use .xlsx, .xls, or .csv files.');
       }
 
-      // Extract project name from root node
       const rootNode = wbsData.find(node => node.parent_wbs_code === null);
       if (rootNode) {
         projectName = rootNode.wbs_name;
       }
 
-      // Store the loaded WBS structure
       setMissingEquipmentConfig(prev => ({
         ...prev,
         existingWbsNodes: wbsData,
@@ -97,14 +90,12 @@ const MissingEquipment = ({
       alert(`❌ Error loading WBS structure: ${error.message}\n\nPlease ensure the file has columns: wbs_code, parent_wbs_code, wbs_name`);
     } finally {
       setIsProcessing(false);
-      // Clear file input
       if (wbsStructureInputRef.current) {
         wbsStructureInputRef.current.value = '';
       }
     }
   };
 
-  // Handle equipment list upload (Step 2)
   const handleEquipmentListUpload = async (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -118,7 +109,6 @@ const MissingEquipment = ({
     try {
       console.log('📦 Processing equipment list:', file.name);
       
-      // Process the equipment file
       const equipmentList = await processEquipmentFile(file);
       console.log(`✅ Loaded ${equipmentList.length} equipment items`);
       
@@ -127,7 +117,6 @@ const MissingEquipment = ({
         return;
       }
 
-      // Generate missing equipment WBS
       console.log('🔍 Analyzing missing equipment...');
       const result = await generateMissingEquipmentWBS(
         equipmentList, 
@@ -137,14 +126,12 @@ const MissingEquipment = ({
       
       console.log(`✅ Analysis complete: ${result.analysis.newEquipment.length} missing equipment items found`);
       
-      // Update state
       setEquipmentData(equipmentList);
       setWbsOutput(result.newWbsNodes);
       setWbsVisualization(result.completeVisualization);
       setMissingEquipmentAnalysis(result.analysis);
       setStep2Complete(true);
       
-      // Show success message
       const newCommissioned = result.analysis.newEquipment.filter(item => item.commissioning === 'Y').length;
       const newTBC = result.analysis.newEquipment.filter(item => item.commissioning === 'TBC').length;
       const existing = result.analysis.existingEquipment.length;
@@ -165,7 +152,6 @@ const MissingEquipment = ({
       alert(`❌ Error processing equipment: ${error.message}\n\nPlease ensure your file contains the required columns.`);
     } finally {
       setIsProcessing(false);
-      // Clear file input
       if (equipmentListInputRef.current) {
         equipmentListInputRef.current.value = '';
       }
@@ -174,7 +160,6 @@ const MissingEquipment = ({
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="bg-white rounded-xl shadow-lg p-6">
         <h2 className="text-2xl font-bold mb-6" style={{ color: rjeColors.darkBlue }}>
           🔧 Add Missing Equipment
@@ -195,7 +180,6 @@ const MissingEquipment = ({
         </div>
       </div>
 
-      {/* Step 1: Load Existing WBS Structure */}
       <div className="bg-white rounded-xl shadow-lg p-6">
         <h3 className="text-xl font-bold mb-4" style={{ color: rjeColors.darkBlue }}>
           Step 1: Load Existing WBS Structure
@@ -256,7 +240,6 @@ const MissingEquipment = ({
         </div>
       </div>
 
-      {/* Step 2: Upload Complete Equipment List */}
       {step1Complete && (
         <div className="bg-white rounded-xl shadow-lg p-6">
           <h3 className="text-xl font-bold mb-4" style={{ color: rjeColors.darkBlue }}>
@@ -313,14 +296,12 @@ const MissingEquipment = ({
         </div>
       )}
 
-      {/* Analysis Results */}
       {step2Complete && (
         <div className="bg-white rounded-xl shadow-lg p-6">
           <h3 className="text-xl font-bold mb-4" style={{ color: rjeColors.darkBlue }}>
             📊 Missing Equipment Analysis
           </h3>
           
-          {/* Statistics Cards */}
           <div className="grid md:grid-cols-4 gap-4 mb-6">
             <div className="text-center p-4 rounded-lg" style={{ backgroundColor: rjeColors.mediumGreen + '20' }}>
               <div className="text-3xl font-bold" style={{ color: rjeColors.darkBlue }}>
@@ -348,7 +329,6 @@ const MissingEquipment = ({
             </div>
           </div>
 
-          {/* Removed Equipment Warning */}
           {missingEquipmentAnalysis.removedEquipment.length > 0 && (
             <div className="mb-6 p-4 rounded-lg" style={{ backgroundColor: '#FED7AA' }}>
               <div className="flex items-center justify-between mb-2">
@@ -383,7 +363,6 @@ const MissingEquipment = ({
             </div>
           )}
 
-          {/* New Equipment Preview */}
           {missingEquipmentAnalysis.newEquipment.length > 0 && (
             <div className="p-4 rounded-lg" style={{ backgroundColor: rjeColors.lightGreen + '15' }}>
               <h4 className="font-semibold mb-3" style={{ color: rjeColors.darkBlue }}>
@@ -419,7 +398,6 @@ const MissingEquipment = ({
             </div>
           )}
 
-          {/* No New Equipment Message */}
           {missingEquipmentAnalysis.newEquipment.length === 0 && (
             <div className="p-4 rounded-lg text-center" style={{ backgroundColor: rjeColors.mediumGreen + '15' }}>
               <CheckCircle className="w-12 h-12 mx-auto mb-3 text-green-600" />
@@ -434,7 +412,6 @@ const MissingEquipment = ({
         </div>
       )}
 
-      {/* Processing Indicator */}
       {isProcessing && (
         <div className="bg-white rounded-xl shadow-lg p-6">
           <div className="flex items-center justify-center">
