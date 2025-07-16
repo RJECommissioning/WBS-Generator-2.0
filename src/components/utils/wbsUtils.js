@@ -13,7 +13,7 @@ import {
 } from './equipmentUtils';
 
 /**
- * Determines the category code for a piece of equipment
+ * ENHANCED: Determines the category code for a piece of equipment with better pattern matching
  * @param {Object} equipment - Equipment object
  * @returns {string} - Category code (01-10, 99)
  */
@@ -21,40 +21,63 @@ export const determineCategoryCode = (equipment) => {
   const equipmentNumber = equipment.equipmentNumber.toUpperCase();
   const plu = equipment.plu ? equipment.plu.toUpperCase() : '';
   
+  // Clean equipment number for pattern matching (remove leading +/- signs)
+  const cleanEquipmentNumber = equipmentNumber.replace(/^[+-]/, '');
+  
+  console.log(`🔍 Categorizing equipment: "${equipmentNumber}" (cleaned: "${cleanEquipmentNumber}")`);
+  
   for (const [categoryCode, patterns] of Object.entries(equipmentPatterns)) {
     for (const pattern of patterns) {
+      let matched = false;
+      
       if (categoryCode === '07') {
         // Special handling for earthing equipment
-        if (pattern === 'E' && equipmentNumber.startsWith('E') && 
-            !equipmentNumber.startsWith('+') && !equipmentNumber.startsWith('EB') && 
-            !equipmentNumber.startsWith('EEP') && !equipmentNumber.startsWith('ESS')) {
-          const charAfterE = equipmentNumber.charAt(1);
-          if (charAfterE >= '0' && charAfterE <= '9') return categoryCode;
-        }
-        if (pattern === 'EB' && equipmentNumber.startsWith('EB')) {
-          const charAfterEB = equipmentNumber.charAt(2);
-          if (charAfterEB >= '0' && charAfterEB <= '9') return categoryCode;
-        }
-        if (pattern === 'EEP' && equipmentNumber.startsWith('EEP')) {
-          const charAfterEEP = equipmentNumber.charAt(3);
-          if (charAfterEEP >= '0' && charAfterEEP <= '9') return categoryCode;
-        }
-        if (pattern === 'MEB' && equipmentNumber.startsWith('MEB')) {
-          return categoryCode;
+        if (pattern === 'E') {
+          // Match 'E' followed by numbers (like E01) OR 'EG' followed by numbers (like EG01)
+          if ((cleanEquipmentNumber.startsWith('E') && cleanEquipmentNumber.charAt(1) >= '0' && cleanEquipmentNumber.charAt(1) <= '9') ||
+              (cleanEquipmentNumber.startsWith('EG') && cleanEquipmentNumber.charAt(2) >= '0' && cleanEquipmentNumber.charAt(2) <= '9')) {
+            matched = true;
+          }
+        } else if (pattern === 'EB' && cleanEquipmentNumber.startsWith('EB')) {
+          const charAfterEB = cleanEquipmentNumber.charAt(2);
+          if (charAfterEB >= '0' && charAfterEB <= '9') matched = true;
+        } else if (pattern === 'EEP' && cleanEquipmentNumber.startsWith('EEP')) {
+          const charAfterEEP = cleanEquipmentNumber.charAt(3);
+          if (charAfterEEP >= '0' && charAfterEEP <= '9') matched = true;
+        } else if (pattern === 'MEB' && cleanEquipmentNumber.startsWith('MEB')) {
+          matched = true;
         }
       } else {
-        // Standard pattern matching
+        // Enhanced standard pattern matching
+        const patternUpper = pattern.toUpperCase();
+        
         if (pattern.startsWith('+')) {
-          if (equipmentNumber.startsWith(pattern)) return categoryCode;
+          // Match equipment that starts with + prefix
+          if (equipmentNumber.startsWith(patternUpper)) matched = true;
         } else if (pattern.length <= 3 && pattern !== 'Fire' && pattern !== 'ESS') {
-          if (equipmentNumber.startsWith(pattern) && !equipmentNumber.startsWith('+')) return categoryCode;
+          // Match short patterns (like F, K, BE, etc.) - check both original and cleaned
+          if ((equipmentNumber.startsWith(patternUpper) && !equipmentNumber.startsWith('+')) ||
+              (cleanEquipmentNumber.startsWith(patternUpper))) {
+            matched = true;
+          }
         } else {
-          if (equipmentNumber.includes(pattern) || plu.includes(pattern)) return categoryCode;
+          // Match longer patterns in equipment number or PLU
+          if (equipmentNumber.includes(patternUpper) || 
+              cleanEquipmentNumber.includes(patternUpper) || 
+              plu.includes(patternUpper)) {
+            matched = true;
+          }
         }
+      }
+      
+      if (matched) {
+        console.log(`   ✅ Matched pattern "${pattern}" in category ${categoryCode}`);
+        return categoryCode;
       }
     }
   }
   
+  console.log(`   ❓ No pattern matched, categorizing as '99' (Unrecognised)`);
   return '99'; // Unrecognised equipment
 };
 
@@ -99,15 +122,41 @@ export const findNextWBSCode = (parentWbsCode, existingNodes) => {
 };
 
 /**
- * Generates the modern WBS structure for a subsystem
+ * ENHANCED: Generates the modern WBS structure for a subsystem with fail-safe
  * @param {Array} nodes - Array to populate with WBS nodes
  * @param {string} subsystemId - Subsystem WBS code
  * @param {string} subsystem - Subsystem name
  * @param {Array} data - Equipment data for this subsystem
+ * @returns {Array} - Array of processed equipment numbers for tracking
  */
 export const generateModernStructure = (nodes, subsystemId, subsystem, data) => {
-  let categoryCounter = 1;
+  console.log(`🏗️ Generating structure for subsystem: ${subsystem}`);
   
+  let categoryCounter = 1;
+  const processedEquipment = new Set();
+  const equipmentByCategory = {};
+  
+  // Get all commissioned equipment for this subsystem
+  const subsystemEquipment = data.filter(item => 
+    item.subsystem === subsystem && item.commissioning === 'Y'
+  );
+  
+  console.log(`   📦 Found ${subsystemEquipment.length} commissioned equipment items`);
+  
+  // STEP 1: Categorize all equipment
+  subsystemEquipment.forEach(item => {
+    const categoryCode = determineCategoryCode(item);
+    if (!equipmentByCategory[categoryCode]) {
+      equipmentByCategory[categoryCode] = [];
+    }
+    equipmentByCategory[categoryCode].push(item);
+  });
+  
+  console.log(`   📊 Equipment categorized:`, Object.keys(equipmentByCategory).map(cat => 
+    `${cat}(${equipmentByCategory[cat].length})`
+  ).join(', '));
+  
+  // STEP 2: Generate categories in order
   orderedCategoryKeys.forEach(categoryCode => {
     const categoryName = categoryMapping[categoryCode];
     const categoryId = `${subsystemId}.${categoryCounter}`;
@@ -133,90 +182,14 @@ export const generateModernStructure = (nodes, subsystemId, subsystem, data) => 
     }
 
     // Add equipment for this category
-    const categoryPatterns = equipmentPatterns[categoryCode];
-    if (categoryPatterns && categoryPatterns.length > 0) {
-      const subsystemEquipment = data.filter(item => 
-        item.subsystem === subsystem && 
-        item.commissioning === 'Y' && 
-        categoryPatterns.some(pattern => {
-          const equipmentUpper = item.equipmentNumber.toUpperCase();
-          const patternUpper = pattern.toUpperCase();
-          
-          // Special handling for earthing equipment
-          if (categoryCode === '07') {
-            if (pattern === 'E' && equipmentUpper.startsWith('E') && 
-                !equipmentUpper.startsWith('+') && !equipmentUpper.startsWith('EB') && 
-                !equipmentUpper.startsWith('EEP') && !equipmentUpper.startsWith('ESS')) {
-              const charAfterE = equipmentUpper.charAt(1);
-              return charAfterE >= '0' && charAfterE <= '9';
-            }
-            if (pattern === 'EB' && equipmentUpper.startsWith('EB')) {
-              const charAfterEB = equipmentUpper.charAt(2);
-              return charAfterEB >= '0' && charAfterEB <= '9';
-            }
-            if (pattern === 'EEP' && equipmentUpper.startsWith('EEP')) {
-              const charAfterEEP = equipmentUpper.charAt(3);
-              return charAfterEEP >= '0' && charAfterEEP <= '9';
-            }
-            if (pattern === 'MEB') {
-              return equipmentUpper.startsWith('MEB');
-            }
-            return false;
-          }
-          
-          // Standard pattern matching
-          if (pattern.startsWith('+')) {
-            return equipmentUpper.startsWith(patternUpper);
-          } else if (pattern.length <= 3 && pattern !== 'Fire' && pattern !== 'ESS') {
-            return equipmentUpper.startsWith(patternUpper) && !equipmentUpper.startsWith('+');
-          } else {
-            return equipmentUpper.includes(patternUpper) || 
-                   (item.plu && item.plu.toUpperCase().includes(patternUpper));
-          }
-        })
-      );
-
-      // Handle unrecognised equipment for category 99
-      if (categoryCode === '99') {
-        const unrecognisedEquipment = data.filter(item => 
-          item.subsystem === subsystem && 
-          item.commissioning === 'Y' && 
-          !allOtherPatterns.some(pattern => {
-            const equipmentUpper = item.equipmentNumber.toUpperCase();
-            const patternUpper = pattern.toUpperCase();
-            
-            if (pattern === 'E' && equipmentUpper.startsWith('E') && 
-                !equipmentUpper.startsWith('+') && !equipmentUpper.startsWith('EB') && 
-                !equipmentUpper.startsWith('EEP') && !equipmentUpper.startsWith('ESS')) {
-              const charAfterE = equipmentUpper.charAt(1);
-              return charAfterE >= '0' && charAfterE <= '9';
-            }
-            if (pattern === 'EB' && equipmentUpper.startsWith('EB')) {
-              const charAfterEB = equipmentUpper.charAt(2);
-              return charAfterEB >= '0' && charAfterEB <= '9';
-            }
-            if (pattern === 'EEP' && equipmentUpper.startsWith('EEP')) {
-              const charAfterEEP = equipmentUpper.charAt(3);
-              return charAfterEEP >= '0' && charAfterEEP <= '9';
-            }
-            
-            if (pattern.startsWith('+')) {
-              return equipmentUpper.startsWith(patternUpper);
-            } else if (pattern.length <= 3 && pattern !== 'Fire' && pattern !== 'ESS') {
-              return equipmentUpper.startsWith(patternUpper) && !equipmentUpper.startsWith('+');
-            } else {
-              return equipmentUpper.includes(patternUpper) || 
-                     (item.plu && item.plu.toUpperCase().includes(patternUpper));
-            }
-          })
-        );
-        
-        subsystemEquipment.push(...unrecognisedEquipment);
-      }
-
-      // Add parent equipment (equipment without parents in this category)
-      const parentEquipment = subsystemEquipment.filter(item => {
-        const hasParentInCategory = subsystemEquipment.some(potentialParent => 
+    const categoryEquipment = equipmentByCategory[categoryCode] || [];
+    
+    if (categoryEquipment.length > 0) {
+      console.log(`   ⚙️  Processing ${categoryEquipment.length} equipment items for category ${categoryCode}`);
+      
+      // Find parent equipment (equipment without parents in this category)
+      const parentEquipment = categoryEquipment.filter(item => {
+        const hasParentInCategory = categoryEquipment.some(potentialParent => 
           potentialParent.equipmentNumber === item.parentEquipmentNumber
         );
         return !hasParentInCategory;
@@ -230,7 +203,9 @@ export const generateModernStructure = (nodes, subsystemId, subsystem, data) => 
           parent_wbs_code: categoryId,
           wbs_name: `${item.equipmentNumber} | ${item.description}`
         });
-
+        
+        processedEquipment.add(item.equipmentNumber);
+        
         // Add child equipment recursively
         const addChildrenRecursively = (parentEquipmentNumber, parentWbsCode) => {
           const childEquipment = data.filter(child => 
@@ -247,6 +222,7 @@ export const generateModernStructure = (nodes, subsystemId, subsystem, data) => 
               wbs_name: `${child.equipmentNumber} | ${child.description}`
             });
             
+            processedEquipment.add(child.equipmentNumber);
             addChildrenRecursively(child.equipmentNumber, childId);
             childCounter++;
           });
@@ -272,18 +248,54 @@ export const generateModernStructure = (nodes, subsystemId, subsystem, data) => 
 
     categoryCounter++;
   });
+  
+  // STEP 3: FAIL-SAFE - Check for any unprocessed equipment
+  const unprocessedEquipment = subsystemEquipment.filter(item => 
+    !processedEquipment.has(item.equipmentNumber)
+  );
+  
+  if (unprocessedEquipment.length > 0) {
+    console.log(`🚨 FAIL-SAFE: Found ${unprocessedEquipment.length} unprocessed equipment items:`);
+    unprocessedEquipment.forEach(item => {
+      console.log(`   ❌ Unprocessed: ${item.equipmentNumber} - ${item.description}`);
+    });
+    
+    // Add unprocessed equipment to category 99
+    const category99Id = `${subsystemId}.11`; // Category 99 is always the 11th category
+    const category99Equipment = nodes.filter(node => 
+      node.parent_wbs_code === category99Id
+    );
+    
+    let unprocessedCounter = category99Equipment.length + 1;
+    unprocessedEquipment.forEach(item => {
+      const equipmentId = `${category99Id}.${unprocessedCounter}`;
+      nodes.push({
+        wbs_code: equipmentId,
+        parent_wbs_code: category99Id,
+        wbs_name: `${item.equipmentNumber} | ${item.description}`
+      });
+      
+      processedEquipment.add(item.equipmentNumber);
+      console.log(`   ✅ Added to category 99: ${item.equipmentNumber}`);
+      unprocessedCounter++;
+    });
+  }
+  
+  console.log(`   ✅ Processed ${processedEquipment.size} equipment items for ${subsystem}`);
+  return Array.from(processedEquipment);
 };
 
 /**
- * Generates WBS structure for a new project
+ * ENHANCED: Generates WBS structure for a new project with comprehensive tracking
  * @param {Array} equipmentData - Array of equipment objects
  * @param {string} projectName - Name of the project
  * @returns {Object} - Object with allNodes and newProjectState
  */
 export const generateNewProjectWBS = (equipmentData, projectName) => {
-  console.log('🏗️ Generating new project WBS structure...');
+  console.log('🏗️ ENHANCED: Generating new project WBS structure...');
   
   const allNodes = [];
+  const allProcessedEquipment = new Set();
   let subsystemCounter = 3;
   let tbcCounter = 1;
 
@@ -311,8 +323,12 @@ export const generateNewProjectWBS = (equipmentData, projectName) => {
     wbs_name: "P | Pre-requisites"
   });
 
+  // Get all commissioned equipment for tracking
+  const allCommissionedEquipment = equipmentData.filter(item => item.commissioning === 'Y');
+  console.log(`📊 Total commissioned equipment to process: ${allCommissionedEquipment.length}`);
+
   // Get unique subsystems from commissioned equipment
-  const rawSubsystems = [...new Set(equipmentData.filter(item => item.commissioning === 'Y').map(item => item.subsystem))];
+  const rawSubsystems = [...new Set(allCommissionedEquipment.map(item => item.subsystem))];
   
   // Sort subsystems
   const subsystems = rawSubsystems.sort((a, b) => {
@@ -338,6 +354,8 @@ export const generateNewProjectWBS = (equipmentData, projectName) => {
     return aFormatted.localeCompare(bFormatted);
   });
   
+  console.log(`🏗️ Processing ${subsystems.length} subsystems`);
+  
   // Generate subsystem structures
   subsystems.forEach((subsystem, index) => {
     const formattedSubsystemName = formatSubsystemName(subsystem);
@@ -359,17 +377,29 @@ export const generateNewProjectWBS = (equipmentData, projectName) => {
       wbs_name: formattedSubsystemName
     });
 
-    // Generate subsystem structure
+    // Generate subsystem structure and track processed equipment
     const subsystemStructure = [];
-    generateModernStructure(subsystemStructure, subsystemId, subsystem, equipmentData);
-    allNodes.push(...subsystemStructure);
+    const processedEquipmentNumbers = generateModernStructure(
+      subsystemStructure, 
+      subsystemId, 
+      subsystem, 
+      equipmentData
+    );
     
+    // Add processed equipment to global tracking
+    processedEquipmentNumbers.forEach(equipNum => {
+      allProcessedEquipment.add(equipNum);
+    });
+    
+    allNodes.push(...subsystemStructure);
     subsystemCounter++;
   });
 
   // Handle TBC equipment
   const tbcEquipment = equipmentData.filter(item => item.commissioning === 'TBC');
   if (tbcEquipment.length > 0) {
+    console.log(`⏳ Processing ${tbcEquipment.length} TBC equipment items`);
+    
     const tbcId = `1.${subsystemCounter}`;
     allNodes.push({
       wbs_code: tbcId,
@@ -387,6 +417,38 @@ export const generateNewProjectWBS = (equipmentData, projectName) => {
     });
   }
 
+  // FINAL FAIL-SAFE: Check for any unprocessed commissioned equipment
+  const unprocessedCommissioned = allCommissionedEquipment.filter(item => 
+    !allProcessedEquipment.has(item.equipmentNumber)
+  );
+  
+  if (unprocessedCommissioned.length > 0) {
+    console.log(`🚨 CRITICAL FAIL-SAFE: Found ${unprocessedCommissioned.length} unprocessed commissioned equipment:`);
+    unprocessedCommissioned.forEach(item => {
+      console.log(`   ❌ MISSED: ${item.equipmentNumber} - ${item.description} (Subsystem: ${item.subsystem})`);
+    });
+    
+    // Add a special "Unprocessed Equipment" section
+    const unprocessedId = `1.${subsystemCounter}`;
+    allNodes.push({
+      wbs_code: unprocessedId,
+      parent_wbs_code: "1",
+      wbs_name: "UNPROCESSED - Equipment Missing from Categories"
+    });
+    
+    let unprocessedCounter = 1;
+    unprocessedCommissioned.forEach(item => {
+      allNodes.push({
+        wbs_code: `${unprocessedId}.${unprocessedCounter}`,
+        parent_wbs_code: unprocessedId,
+        wbs_name: `${item.equipmentNumber} | ${item.description}`
+      });
+      unprocessedCounter++;
+    });
+    
+    console.log(`   ✅ Added ${unprocessedCommissioned.length} unprocessed items to special section`);
+  }
+
   // Create project state
   const newProjectState = {
     projectName,
@@ -396,7 +458,12 @@ export const generateNewProjectWBS = (equipmentData, projectName) => {
     timestamp: new Date().toISOString()
   };
 
-  console.log(`✅ Generated ${allNodes.length} WBS nodes for ${subsystems.length} subsystems`);
+  console.log(`✅ ENHANCED WBS Generation Complete:`);
+  console.log(`   - Total WBS nodes: ${allNodes.length}`);
+  console.log(`   - Subsystems: ${subsystems.length}`);
+  console.log(`   - Commissioned equipment processed: ${allProcessedEquipment.size}`);
+  console.log(`   - Expected commissioned equipment: ${allCommissionedEquipment.length}`);
+  console.log(`   - Missing equipment: ${allCommissionedEquipment.length - allProcessedEquipment.size}`);
   
   return {
     allNodes,
