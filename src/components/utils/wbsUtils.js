@@ -1,4 +1,4 @@
-// src/utils/wbsUtils.js
+// src/components/utils/wbsUtils.js
 
 import { 
   categoryMapping, 
@@ -555,4 +555,62 @@ export const generateMissingEquipmentWBS = async (newEquipmentList, existingWbsN
     completeVisualization,
     analysis
   };
+};
+
+/**
+ * Exports WBS data as CSV format
+ * @param {Array} wbsNodes - Array of WBS nodes
+ * @param {string} fileName - Name for the CSV file
+ * @returns {string} - CSV formatted string
+ */
+export const exportWBSAsCSV = (wbsNodes, fileName = 'WBS_Export') => {
+  console.log(`📄 Exporting ${wbsNodes.length} WBS nodes as CSV`);
+  
+  const csvContent = [
+    'wbs_code,parent_wbs_code,wbs_name',
+    ...wbsNodes.map(node => 
+      `"${node.wbs_code}","${node.parent_wbs_code || ''}","${node.wbs_name}"`
+    )
+  ].join('\n');
+
+  return csvContent;
+};
+
+/**
+ * Downloads CSV content as a file
+ * @param {string} csvContent - CSV formatted string
+ * @param {string} fileName - Name for the downloaded file
+ */
+export const downloadCSV = (csvContent, fileName) => {
+  console.log(`💾 Downloading CSV file: ${fileName}`);
+  
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = fileName.endsWith('.csv') ? fileName : `${fileName}.csv`;
+  link.click();
+  
+  URL.revokeObjectURL(url);
+};
+
+/**
+ * Exports project state as JSON
+ * @param {Object} projectState - Project state object
+ * @param {string} fileName - Name for the JSON file
+ */
+export const exportProjectState = (projectState, fileName = 'project_state') => {
+  console.log(`📁 Exporting project state: ${projectState.projectName}`);
+  
+  const dataStr = JSON.stringify(projectState, null, 2);
+  const dataBlob = new Blob([dataStr], { type: 'application/json' });
+  const url = URL.createObjectURL(dataBlob);
+  
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = fileName.endsWith('.json') ? fileName : `${fileName}.json`;
+  link.click();
+  
+  URL.revokeObjectURL(url);
 };
