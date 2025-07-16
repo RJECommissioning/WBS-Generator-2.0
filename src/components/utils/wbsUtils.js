@@ -1,4 +1,4 @@
-// wbsUtils.js - Updated with parent-based categorization logic
+// src/components/utils/wbsUtils.js - Updated with parent-based categorization logic
 
 export const categoryMapping = {
   '01': 'Preparations and set-up',
