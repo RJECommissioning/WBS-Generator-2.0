@@ -1,11 +1,11 @@
-// src/components/utils/WBSGenerator.jsx - Main orchestrator component
+// src/components/WBSGenerator.jsx - Main orchestrator component
 
 import { 
   generateModernStructure, 
   formatSubsystemName, 
   processEquipmentByCategory,
   enhancedCategorizeEquipment 
-} from './wbsUtils.js';
+} from './utils/wbsUtils.js';
 
 // FIXED: Enhanced WBS generation with parent-based categorization
 export const generateWBS = (data, projectName, projectState, uploadMode) => {
