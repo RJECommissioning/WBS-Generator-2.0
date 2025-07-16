@@ -1,5 +1,3 @@
-// src/components/shared/WBSTreeVisualization.jsx
-
 import React, { useState, useMemo } from 'react';
 import { 
   ChevronRight, 
@@ -7,14 +5,20 @@ import {
   Eye, 
   EyeOff, 
   Search, 
-  ExpandIcon as Expand, 
-  MinusSquare as Collapse,
-  Hash,
+  Expand,
+  Minimize2,
   CheckCircle,
-  AlertCircle,
   Circle
 } from 'lucide-react';
-import { rjeColors } from '../utils/constants';
+
+const rjeColors = {
+  lightGreen: '#B8D582',
+  mediumGreen: '#7DB544',
+  darkGreen: '#4A9B4B',
+  teal: '#2E8B7A',
+  blue: '#1E7FC2',
+  darkBlue: '#0F5A8F'
+};
 
 const WBSTreeVisualization = ({ wbsNodes = [] }) => {
   const [expandedNodes, setExpandedNodes] = useState(new Set());
@@ -240,7 +244,7 @@ const WBSTreeVisualization = ({ wbsNodes = [] }) => {
               className="flex items-center px-4 py-2 text-white rounded-lg font-medium transition-all hover:shadow-lg"
               style={{ backgroundColor: rjeColors.darkGreen }}
             >
-              <Collapse className="w-4 h-4 mr-2" />
+              <Minimize2 className="w-4 h-4 mr-2" />
               Collapse All
             </button>
             <div className="flex-1 min-w-64">
@@ -308,97 +312,28 @@ const WBSTreeVisualization = ({ wbsNodes = [] }) => {
             </div>
           </div>
 
-          {/* Category Legend */}
-          <div className="p-4 rounded-lg" style={{ backgroundColor: rjeColors.lightGreen + '10' }}>
-            <h4 className="font-semibold mb-3" style={{ color: rjeColors.darkBlue }}>
-              🏷️ Category Legend
-            </h4>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2 text-sm">
-              <div className="flex items-center">
-                <span className="mr-2">🔧</span>
-                01 | Preparations
-              </div>
-              <div className="flex items-center">
-                <span className="mr-2">🛡️</span>
-                02 | Protection
-              </div>
-              <div className="flex items-center">
-                <span className="mr-2">⚡</span>
-                03 | HV Switchboards
-              </div>
-              <div className="flex items-center">
-                <span className="mr-2">🔌</span>
-                04 | LV Switchboards
-              </div>
-              <div className="flex items-center">
-                <span className="mr-2">🔄</span>
-                05 | Transformers
-              </div>
-              <div className="flex items-center">
-                <span className="mr-2">🔋</span>
-                06 | Battery Systems
-              </div>
-              <div className="flex items-center">
-                <span className="mr-2">🌍</span>
-                07 | Earthing
-              </div>
-              <div className="flex items-center">
-                <span className="mr-2">🏢</span>
-                08 | Building Services
-              </div>
-              <div className="flex items-center">
-                <span className="mr-2">🔗</span>
-                09 | Interface Testing
-              </div>
-              <div className="flex items-center">
-                <span className="mr-2">⚙️</span>
-                10 | Ancillary Systems
-              </div>
-              <div className="flex items-center">
-                <span className="mr-2">❓</span>
-                99 | Unrecognised
-              </div>
-              <div className="flex items-center">
-                <span className="mr-2">🎯</span>
-                M | Milestones
-              </div>
-              <div className="flex items-center">
-                <span className="mr-2">📋</span>
-                P | Pre-requisites
-              </div>
-              <div className="flex items-center">
-                <span className="mr-2">🏗️</span>
-                S | Subsystems
-              </div>
-              <div className="flex items-center">
-                <span className="mr-2">❓</span>
-                TBC | To Be Confirmed
+          {/* Status Legend - Only show if there are new/existing items */}
+          {(wbsNodes.some(node => node.isNew) || wbsNodes.some(node => node.isExisting)) && (
+            <div className="p-4 rounded-lg" style={{ backgroundColor: rjeColors.lightGreen + '10' }}>
+              <h4 className="font-semibold mb-3" style={{ color: rjeColors.darkBlue }}>
+                📍 Status Legend
+              </h4>
+              <div className="flex flex-wrap gap-4 text-sm">
+                {wbsNodes.some(node => node.isNew) && (
+                  <div className="flex items-center">
+                    <CheckCircle className="w-4 h-4 text-green-600 mr-2" />
+                    <span>New items being added</span>
+                  </div>
+                )}
+                {wbsNodes.some(node => node.isExisting) && (
+                  <div className="flex items-center">
+                    <Circle className="w-4 h-4 text-blue-600 mr-2" />
+                    <span>Existing items in WBS</span>
+                  </div>
+                )}
               </div>
             </div>
-            
-            {/* Status Legend */}
-            {(wbsNodes.some(node => node.isNew) || wbsNodes.some(node => node.isExisting)) && (
-              <div className="mt-4 pt-3 border-t border-gray-200">
-                <h4 className="font-semibold mb-2" style={{ color: rjeColors.darkBlue }}>
-                  📍 Status Legend
-                </h4>
-                <div className="flex flex-wrap gap-4 text-sm">
-                  {wbsNodes.some(node => node.isNew) && (
-                    <div className="flex items-center">
-                      <CheckCircle className="w-4 h-4 text-green-600 mr-2" />
-                      <span>New items being added</span>
-                    </div>
-                  )}
-                  {wbsNodes.some(node => node.isExisting) && (
-                    <div className="flex items-center">
-                      <Circle className="w-4 h-4 text-blue-600 mr-2" />
-                      <span>Existing items in WBS</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
+          )}
         </>
       )}
     </div>
