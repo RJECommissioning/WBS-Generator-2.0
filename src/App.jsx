@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { rjeColors } from './components/utils/constants';
-import WBSGenerator from './components/WBSGenerator';
+import WBSGenerator from './components/utils/WBSGenerator';
 
 const App = () => {
   return (
