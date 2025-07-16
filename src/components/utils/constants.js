@@ -1,4 +1,4 @@
-// src/components/utils/constants.js
+// src/utils/constants.js
 
 export const rjeColors = {
   lightGreen: '#B8D582',
