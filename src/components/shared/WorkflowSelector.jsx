@@ -1,14 +1,13 @@
 // src/components/shared/WorkflowSelector.jsx
-
 import React from 'react';
 import { Settings, Plus, Zap } from 'lucide-react';
-import { rjeColors } from '../utils/constants';
+import { rjeColors } from '../utils/constants.js';
 
-const WorkflowSelector = ({ uploadMode, setUploadMode, onModeChange }) => {
+const WorkflowSelector = ({ uploadMode, setUploadMode, clearWBSData }) => {
   const handleModeChange = (mode) => {
     setUploadMode(mode);
-    if (onModeChange) {
-      onModeChange(mode);
+    if (clearWBSData) {
+      clearWBSData();
     }
   };
 
