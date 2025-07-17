@@ -1,431 +1,23 @@
-// src/components/utils/equipmentUtils.js
+// src/components/utils/equipmentUtils.js - Equipment file processing and validation
 
-import { columnMapping, invalidEquipmentPatterns } from './constants.js';
-
-/**
- * Validates if an equipment number is valid for WBS processing
- * @param {string} equipmentNumber - The equipment number to validate
- * @returns {boolean} - True if valid, false otherwise
- */
+// FIXED: Enhanced equipment validation function
 export const isValidEquipmentNumber = (equipmentNumber) => {
-  if (!equipmentNumber || typeof equipmentNumber !== 'string') return false;
+  if (!equipmentNumber || equipmentNumber.length < 2) return false;
   
-  const trimmed = equipmentNumber.trim();
-  if (trimmed.length < 1) return false;
-  
-  // IMPROVED: More specific invalid patterns
-  const specificInvalidPatterns = [
-    /^EXAMPLE/i,
-    /^Lot\s+\d+/i,
-    /^COMBI-/i,
-    /^FREE\s+ISSUE/i,
-    /^Wall\s+Internal/i,
-    /\(Copy\)/i,
-    /^Test\s+bay$/i,
-    /^Panel\s+Shop$/i,
-    /^Pad$/i,
-    /^Phase\s+[12]$/i
-  ];
-  
-  return !specificInvalidPatterns.some(pattern => pattern.test(trimmed));
-};
-
-/**
- * FIXED: Processes an equipment file (Excel or CSV) and returns standardized equipment array
- * @param {File} file - The uploaded file
- * @param {Object} columnMapping - Column mapping object from constants
- * @returns {Array} - Array of equipment objects
- */
-export const processEquipmentFile = async (file, columnMappingParam) => {
-  let equipmentList = [];
-  
-  try {
-    if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
-      // Handle Excel files
-      const XLSX = await import('xlsx');
-      const arrayBuffer = await file.arrayBuffer();
-      const workbook = XLSX.read(arrayBuffer, { cellDates: true });
-      
-      // Try to find Equipment_List sheet, otherwise use first sheet
-      const sheetName = workbook.SheetNames.includes('Equipment_List') 
-        ? 'Equipment_List' 
-        : workbook.SheetNames[0];
-      
-      const worksheet = workbook.Sheets[sheetName];
-      const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
-      
-      if (jsonData.length === 0) {
-        throw new Error('Excel file is empty');
-      }
-      
-      const headerRow = jsonData[0];
-      const dataRows = jsonData.slice(1);
-      
-      // FIXED: Use the columnMapping parameter properly
-      equipmentList = dataRows.map(row => {
-        const equipment = {};
-        headerRow.forEach((header, index) => {
-          const mappedField = columnMappingParam[header];
-          if (mappedField) {
-            equipment[mappedField] = row[index] || '';
-          }
-        });
-        return equipment;
-      });
-      
-    } else if (file.name.endsWith('.csv')) {
-      // Handle CSV files
-      const text = await file.text();
-      const lines = text.split('\n').filter(line => line.trim()); // Remove empty lines
-      
-      if (lines.length === 0) {
-        throw new Error('CSV file is empty');
-      }
-      
-      const delimiter = lines[0].includes('\t') ? '\t' : ',';
-      const headers = lines[0].split(delimiter).map(h => h.trim().replace(/"/g, ''));
-      
-      equipmentList = lines.slice(1).map(line => {
-        const values = line.split(delimiter).map(v => v.trim().replace(/"/g, ''));
-        const equipment = {};
-        
-        headers.forEach((header, index) => {
-          const headerLower = header.toLowerCase();
-          if (headerLower.includes('subsystem')) {
-            equipment.subsystem = values[index] || '';
-          } else if (headerLower.includes('parent') && headerLower.includes('equipment')) {
-            equipment.parentEquipmentNumber = values[index] || '';
-          } else if (headerLower.includes('equipment') && headerLower.includes('number')) {
-            equipment.equipmentNumber = values[index] || '';
-          } else if (headerLower.includes('description')) {
-            equipment.description = values[index] || '';
-          } else if (headerLower.includes('commissioning')) {
-            equipment.commissioning = values[index] || '';
-          } else if (headerLower.includes('plu')) {
-            equipment.plu = values[index] || '';
-          } else if (headerLower.includes('supplier')) {
-            equipment.supplier = values[index] || '';
-          } else if (headerLower.includes('manufacturer')) {
-            equipment.manufacturer = values[index] || '';
-          } else if (headerLower.includes('model')) {
-            equipment.modelNumber = values[index] || '';
-          } else if (headerLower.includes('project')) {
-            equipment.project = values[index] || '';
-          } else if (headerLower.includes('item')) {
-            equipment.itemNo = values[index] || '';
-          } else if (headerLower.includes('test')) {
-            equipment.testCode = values[index] || '';
-          } else if (headerLower.includes('comment')) {
-            equipment.comments = values[index] || '';
-          } else if (headerLower.includes('drawing')) {
-            equipment.drawings = values[index] || '';
-          }
-        });
-        
-        return equipment;
-      });
-      
-    } else {
-      throw new Error('Unsupported file format. Please use .xlsx, .xls, or .csv files.');
-    }
-    
-    // Filter and validate equipment
-    const validEquipment = equipmentList.filter(item => {
-      // Must have required fields
-      if (!item.equipmentNumber || !item.subsystem || !item.description || !item.commissioning) {
-        return false;
-      }
-      
-      // Must have valid equipment number
-      if (!isValidEquipmentNumber(item.equipmentNumber)) {
-        return false;
-      }
-      
-      // Must have valid commissioning status
-      if (!['Y', 'N', 'TBC'].includes(item.commissioning.toUpperCase())) {
-        return false;
-      }
-      
-      return true;
-    }).map(item => ({
-      ...item,
-      // Standardize commissioning values
-      commissioning: item.commissioning.toUpperCase(),
-      // Clean up strings
-      equipmentNumber: item.equipmentNumber.trim(),
-      subsystem: item.subsystem.trim(),
-      description: item.description.trim(),
-      parentEquipmentNumber: item.parentEquipmentNumber ? item.parentEquipmentNumber.trim() : ''
-    }));
-    
-    console.log(`📊 Equipment Processing Summary:`);
-    console.log(`   Total rows processed: ${equipmentList.length}`);
-    console.log(`   Valid equipment items: ${validEquipment.length}`);
-    console.log(`   Commissioned (Y): ${validEquipment.filter(item => item.commissioning === 'Y').length}`);
-    console.log(`   TBC: ${validEquipment.filter(item => item.commissioning === 'TBC').length}`);
-    console.log(`   Not commissioned (N): ${validEquipment.filter(item => item.commissioning === 'N').length}`);
-    
-    return validEquipment;
-    
-  } catch (error) {
-    console.error('Equipment file processing error:', error);
-    throw new Error(`Failed to process equipment file: ${error.message}`);
-  }
-};
-
-/**
- * ENHANCED: Extracts equipment numbers from existing WBS structure with extensive debugging
- * @param {Array} wbsNodes - Array of WBS nodes
- * @returns {Object} - Object with equipmentNumbers array and existingSubsystems map
- */
-export const extractEquipmentFromWBS = (wbsNodes) => {
-  console.log('🔧 ENHANCED: Equipment Extraction from WBS');
-  console.log('==========================================');
-  
-  const equipmentNumbers = [];
-  const existingSubsystems = new Map();
-  const debugInfo = {
-    processed: [],
-    skipped: [],
-    invalid: [],
-    duplicates: []
-  };
-  
-  // EXACT WBS structure elements to skip
-  const wbsStructureElements = new Set([
-    'Test bay', 'Panel Shop', 'Pad', 'Phase 1', 'Phase 2',
+  // Exclude invalid patterns
+  const invalidPatterns = [
+    'EXAMPLE', 'Lot ', 'COMBI-', 'FREE ISSUE', 'Wall Internal', 
+    '(Copy)', 'Test bay', 'Panel Shop', 'Pad', 'Phase 1', 'Phase 2',
     'Preparations and set-up', 'Protection Panels', 'HV Switchboards',
     'LV Switchboards', 'Transformers', 'Battery Systems', 'Earthing',
     'Building Services', 'Interface Testing', 'Ancillary Systems',
     'Unrecognised Equipment', 'Milestones', 'Pre-requisites'
-  ]);
-  
-  // WBS structure PATTERNS - more precise
-  const wbsPatterns = [
-    /^M\s*\|\s*Milestones?$/i,
-    /^P\s*\|\s*Pre-requisites?$/i,
-    /^S\d+\s*\|\s*.+$/,
-    /^\d{2}\s*\|\s*(Preparations|Protection|HV|LV|Transformers|Battery|Earthing|Building|Interface|Ancillary|Unrecognised)/i,
-    /^TBC\s*-\s*Equipment/i,
-    /^\d{4}\s+/
   ];
   
-  // Helper function to extract equipment from a WBS name
-  const extractEquipmentFromName = (wbsName) => {
-    // Try multiple separator patterns in order of likelihood
-    const separators = [
-      { pattern: ' | ', name: 'pipe with spaces' },
-      { pattern: ' - ', name: 'dash with spaces' },
-      { pattern: '|', name: 'pipe no spaces' },
-      { pattern: '-', name: 'dash no spaces' },
-      { pattern: ' : ', name: 'colon with spaces' },
-      { pattern: ':', name: 'colon no spaces' },
-      { pattern: ' / ', name: 'slash with spaces' },
-      { pattern: '/', name: 'slash no spaces' }
-    ];
-    
-    for (const sep of separators) {
-      if (wbsName.includes(sep.pattern)) {
-        const parts = wbsName.split(sep.pattern);
-        if (parts.length >= 2) {
-          const equipmentNumber = parts[0].trim();
-          const description = parts.slice(1).join(sep.pattern).trim();
-          
-          if (equipmentNumber && description) {
-            return {
-              equipmentNumber,
-              description,
-              separator: sep.name,
-              originalName: wbsName
-            };
-          }
-        }
-      }
-    }
-    
-    return null;
-  };
-  
-  // Process each WBS node
-  wbsNodes.forEach((node, index) => {
-    const wbsName = node.wbs_name;
-    
-    // Build subsystem mapping
-    if (wbsName.match(/^S\d+\s*\|\s*/)) {
-      const subsystemName = wbsName.split('|')[1]?.trim();
-      if (subsystemName) {
-        existingSubsystems.set(subsystemName, node.wbs_code);
-        const cleanName = subsystemName.replace(/^\+/, '').trim();
-        existingSubsystems.set(cleanName, node.wbs_code);
-        existingSubsystems.set(`+${cleanName}`, node.wbs_code);
-      }
-    }
-    
-    // Skip exact WBS structure matches
-    if (wbsStructureElements.has(wbsName)) {
-      debugInfo.skipped.push({
-        wbsName,
-        reason: 'exact WBS structure match',
-        wbsCode: node.wbs_code
-      });
-      return;
-    }
-    
-    // Skip WBS pattern matches
-    if (wbsPatterns.some(pattern => pattern.test(wbsName))) {
-      debugInfo.skipped.push({
-        wbsName,
-        reason: 'WBS pattern match',
-        wbsCode: node.wbs_code
-      });
-      return;
-    }
-    
-    // Try to extract equipment
-    const extracted = extractEquipmentFromName(wbsName);
-    
-    if (extracted) {
-      const { equipmentNumber, description, separator } = extracted;
-      
-      // Validate equipment number
-      if (!isValidEquipmentNumber(equipmentNumber)) {
-        debugInfo.invalid.push({
-          wbsName,
-          equipmentNumber,
-          description,
-          reason: 'failed validation',
-          wbsCode: node.wbs_code
-        });
-        return;
-      }
-      
-      // Check for duplicates
-      if (equipmentNumbers.includes(equipmentNumber)) {
-        debugInfo.duplicates.push({
-          wbsName,
-          equipmentNumber,
-          description,
-          wbsCode: node.wbs_code
-        });
-        return;
-      }
-      
-      // Add to results
-      equipmentNumbers.push(equipmentNumber);
-      debugInfo.processed.push({
-        wbsName,
-        equipmentNumber,
-        description,
-        separator,
-        wbsCode: node.wbs_code
-      });
-      
-      // Show first 10 extractions
-      if (debugInfo.processed.length <= 10) {
-        console.log(`   ✅ Extracted: "${equipmentNumber}" from "${wbsName}" (${separator})`);
-      }
-    } else {
-      debugInfo.skipped.push({
-        wbsName,
-        reason: 'no equipment pattern found',
-        wbsCode: node.wbs_code
-      });
-    }
-  });
-  
-  // Enhanced logging
-  console.log(`\n📊 ENHANCED Extraction Summary:`);
-  console.log(`   Total WBS nodes processed: ${wbsNodes.length}`);
-  console.log(`   Equipment extracted: ${equipmentNumbers.length}`);
-  console.log(`   Items processed: ${debugInfo.processed.length}`);
-  console.log(`   Items skipped: ${debugInfo.skipped.length}`);
-  console.log(`   Items invalid: ${debugInfo.invalid.length}`);
-  console.log(`   Duplicates found: ${debugInfo.duplicates.length}`);
-  console.log(`   Subsystems found: ${existingSubsystems.size}`);
-  
-  // Show breakdown of skipped items
-  if (debugInfo.skipped.length > 0) {
-    console.log(`\n🔍 Skipped Items Breakdown:`);
-    const skipReasons = {};
-    debugInfo.skipped.forEach(item => {
-      skipReasons[item.reason] = (skipReasons[item.reason] || 0) + 1;
-    });
-    Object.entries(skipReasons).forEach(([reason, count]) => {
-      console.log(`   ${reason}: ${count} items`);
-    });
-  }
-  
-  // Show some examples of skipped items that might be equipment
-  const potentialEquipment = debugInfo.skipped.filter(item => 
-    item.reason === 'no equipment pattern found' && 
-    item.wbsName.length > 0 && 
-    !item.wbsName.match(/^\d{2}\s*\|/) &&
-    !item.wbsName.match(/^[MPS]\d*\s*\|/)
-  );
-  
-  if (potentialEquipment.length > 0) {
-    console.log(`\n🚨 Potential Equipment Items Missed (${potentialEquipment.length} items):`);
-    potentialEquipment.slice(0, 10).forEach(item => {
-      console.log(`   ❓ "${item.wbsName}" (${item.wbsCode})`);
-    });
-    if (potentialEquipment.length > 10) {
-      console.log(`   ... and ${potentialEquipment.length - 10} more`);
-    }
-  }
-  
-  return { 
-    equipmentNumbers, 
-    existingSubsystems,
-    debugInfo // Return debug info for further analysis
-  };
+  return !invalidPatterns.some(pattern => equipmentNumber.includes(pattern));
 };
 
-/**
- * Compares equipment lists to identify new, existing, and removed equipment
- * @param {Array} existingEquipment - Array of existing equipment numbers
- * @param {Array} newEquipmentList - Array of new equipment objects
- * @returns {Object} - Object with newEquipment, existingEquipment, and removedEquipment arrays
- */
-export const compareEquipmentLists = (existingEquipment, newEquipmentList) => {
-  console.log("🔍 Equipment Comparison Analysis");
-  console.log("===============================");
-  
-  const existingSet = new Set(existingEquipment);
-  const newSet = new Set(newEquipmentList.map(item => item.equipmentNumber));
-  
-  console.log(`📋 Existing equipment count: ${existingEquipment.length}`);
-  console.log(`📦 New equipment list count: ${newEquipmentList.length}`);
-  console.log(`🔢 Unique new equipment numbers: ${newSet.size}`);
-  
-  const newEquipment = newEquipmentList.filter(item => !existingSet.has(item.equipmentNumber));
-  const existingEquipmentInNew = newEquipmentList.filter(item => existingSet.has(item.equipmentNumber));
-  const removedEquipment = existingEquipment.filter(equipNum => !newSet.has(equipNum));
-  
-  console.log(`🆕 New equipment found: ${newEquipment.length}`);
-  console.log(`✅ Existing equipment in new list: ${existingEquipmentInNew.length}`);
-  console.log(`❌ Removed equipment: ${removedEquipment.length}`);
-  
-  // Show first 10 missing items for debugging
-  if (newEquipment.length > 0) {
-    console.log(`\n🔍 First 10 "new" equipment items:`);
-    newEquipment.slice(0, 10).forEach(item => {
-      console.log(`   🆕 ${item.equipmentNumber} - ${item.description} (${item.commissioning})`);
-    });
-  }
-  
-  return {
-    newEquipment,
-    existingEquipment: existingEquipmentInNew,
-    removedEquipment
-  };
-};
-
-/**
- * Finds matching subsystem in existing WBS structure
- * @param {string} equipmentSubsystem - Subsystem name from equipment
- * @param {Map} existingSubsystems - Map of existing subsystems
- * @returns {string|null} - WBS code of matching subsystem or null
- */
+// FIXED: Enhanced subsystem matching function
 export const findSubsystemMatch = (equipmentSubsystem, existingSubsystems) => {
   if (!equipmentSubsystem) return null;
   
@@ -459,4 +51,269 @@ export const findSubsystemMatch = (equipmentSubsystem, existingSubsystems) => {
   }
   
   return null;
+};
+
+// FIXED: Process equipment file (Excel or CSV)
+export const processEquipmentFile = async (file) => {
+  console.log(`📁 Processing file: ${file.name}`);
+  
+  let equipmentList = [];
+  
+  if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
+    // Process Excel file
+    const XLSX = await import('xlsx');
+    const arrayBuffer = await file.arrayBuffer();
+    const workbook = XLSX.read(arrayBuffer, { cellDates: true });
+    
+    const sheetName = workbook.SheetNames.includes('Equipment_List') 
+      ? 'Equipment_List' 
+      : workbook.SheetNames[0];
+    
+    const worksheet = workbook.Sheets[sheetName];
+    const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+    
+    const headerRow = jsonData[0];
+    const dataRows = jsonData.slice(1);
+    
+    const columnMapping = {
+      'Subsystem': 'subsystem',
+      'Parent Equipment Number': 'parentEquipmentNumber',
+      'Equipment Number': 'equipmentNumber',
+      'Description': 'description',
+      'Commissioning (Y/N)': 'commissioning',
+      'Project': 'project',
+      'Item No.': 'itemNo',
+      'PLU': 'plu',
+      'Supplier': 'supplier',
+      'Manufacturer': 'manufacturer',
+      'Model Number': 'modelNumber',
+      'Test Code': 'testCode',
+      'Comments': 'comments',
+      'Drawings': 'drawings'
+    };
+    
+    equipmentList = dataRows.map(row => {
+      const equipment = {};
+      headerRow.forEach((header, index) => {
+        const mappedField = columnMapping[header];
+        if (mappedField) {
+          equipment[mappedField] = row[index] || '';
+        }
+      });
+      return equipment;
+    }).filter(item => 
+      item.equipmentNumber && 
+      item.subsystem && 
+      item.description && 
+      item.commissioning
+    );
+    
+  } else if (file.name.endsWith('.csv')) {
+    // Process CSV file
+    const text = await file.text();
+    const lines = text.split('\n');
+    const delimiter = lines[0].includes('\t') ? '\t' : ',';
+    const headers = lines[0].split(delimiter).map(h => h.trim().replace(/"/g, ''));
+    
+    equipmentList = lines.slice(1).map(line => {
+      const values = line.split(delimiter).map(v => v.trim().replace(/"/g, ''));
+      const equipment = {};
+      
+      headers.forEach((header, index) => {
+        const headerLower = header.toLowerCase();
+        if (headerLower.includes('subsystem')) {
+          equipment.subsystem = values[index] || '';
+        } else if (headerLower.includes('parent') && headerLower.includes('equipment')) {
+          equipment.parentEquipmentNumber = values[index] || '';
+        } else if (headerLower.includes('equipment') && headerLower.includes('number')) {
+          equipment.equipmentNumber = values[index] || '';
+        } else if (headerLower.includes('description')) {
+          equipment.description = values[index] || '';
+        } else if (headerLower.includes('commissioning')) {
+          equipment.commissioning = values[index];
+        } else if (headerLower.includes('plu')) {
+          equipment.plu = values[index] || '';
+        }
+      });
+      
+      return equipment;
+    }).filter(item => 
+      item.equipmentNumber && 
+      item.subsystem && 
+      item.description && 
+      item.commissioning
+    );
+    
+  } else {
+    throw new Error('Unsupported file format. Please use .xlsx, .xls, or .csv files.');
+  }
+  
+  // Validate equipment list
+  const validEquipment = equipmentList.filter(item => 
+    isValidEquipmentNumber(item.equipmentNumber)
+  );
+  
+  console.log(`📊 File processing complete:`);
+  console.log(`   Total rows processed: ${equipmentList.length}`);
+  console.log(`   Valid equipment: ${validEquipment.length}`);
+  console.log(`   Commissioned (Y): ${validEquipment.filter(item => item.commissioning === 'Y').length}`);
+  console.log(`   TBC: ${validEquipment.filter(item => item.commissioning === 'TBC').length}`);
+  console.log(`   Not commissioned (N): ${validEquipment.filter(item => item.commissioning === 'N').length}`);
+  
+  if (validEquipment.length === 0) {
+    throw new Error('No valid equipment found. Please ensure your file contains the required columns: Subsystem, Parent Equipment Number, Equipment Number, Description, Commissioning (Y/N)');
+  }
+  
+  return validEquipment;
+};
+
+// FIXED: Process WBS structure file (for continue/missing equipment modes)
+export const processWBSFile = async (file) => {
+  console.log(`📁 Processing WBS file: ${file.name}`);
+  
+  let wbsData = [];
+  let projectName = 'Imported Project';
+  
+  if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
+    const XLSX = await import('xlsx');
+    const arrayBuffer = await file.arrayBuffer();
+    const workbook = XLSX.read(arrayBuffer, { cellDates: true });
+    
+    const sheetName = workbook.SheetNames[0];
+    const worksheet = workbook.Sheets[sheetName];
+    const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+    
+    const headerRow = jsonData[0];
+    const dataRows = jsonData.slice(1);
+    
+    wbsData = dataRows.map(row => ({
+      wbs_code: row[0]?.toString() || '',
+      parent_wbs_code: row[1] ? row[1].toString() : null,
+      wbs_name: row[2] || ''
+    })).filter(item => item.wbs_code && item.wbs_name);
+    
+  } else if (file.name.endsWith('.csv')) {
+    const text = await file.text();
+    const lines = text.split('\n');
+    const delimiter = lines[0].includes('\t') ? '\t' : ',';
+    const headers = lines[0].split(delimiter).map(h => h.trim().replace(/"/g, ''));
+    
+    wbsData = lines.slice(1).map(line => {
+      const values = line.split(delimiter).map(v => v.trim().replace(/"/g, ''));
+      return {
+        wbs_code: values[0] || '',
+        parent_wbs_code: values[1] || null,
+        wbs_name: values[2] || ''
+      };
+    }).filter(item => item.wbs_code && item.wbs_name);
+  } else {
+    throw new Error('Unsupported file format. Please use .xlsx, .xls, or .csv files.');
+  }
+
+  // Extract project name from root node
+  const rootNode = wbsData.find(node => node.parent_wbs_code === null);
+  if (rootNode) {
+    projectName = rootNode.wbs_name;
+  }
+
+  // Calculate last WBS code for continue mode
+  const subsystemNodes = wbsData.filter(node => 
+    node.wbs_code.startsWith('1.') && 
+    node.wbs_code.split('.').length === 2 &&
+    node.wbs_name.startsWith('S')
+  );
+  
+  let lastWbsCode = 3;
+  if (subsystemNodes.length > 0) {
+    const subsystemNumbers = subsystemNodes.map(node => 
+      parseInt(node.wbs_code.split('.')[1])
+    );
+    lastWbsCode = Math.max(...subsystemNumbers) + 1;
+  }
+
+  // Extract existing subsystems
+  const subsystems = wbsData
+    .filter(node => node.wbs_name.startsWith('S') && node.wbs_name.includes('|'))
+    .map(node => node.wbs_name.split('|')[1]?.trim() || '')
+    .filter(name => name);
+
+  console.log(`📊 WBS file processing complete:`);
+  console.log(`   Project: ${projectName}`);
+  console.log(`   Total WBS nodes: ${wbsData.length}`);
+  console.log(`   Subsystems: ${subsystems.length}`);
+  console.log(`   Next WBS code: ${lastWbsCode}`);
+
+  return {
+    projectName,
+    lastWbsCode,
+    subsystems,
+    wbsNodes: wbsData
+  };
+};
+
+// FIXED: Compare equipment lists for missing equipment functionality
+export const compareEquipmentLists = (existingEquipment, newEquipmentList) => {
+  const existingSet = new Set(existingEquipment);
+  const newSet = new Set(newEquipmentList.map(item => item.equipmentNumber));
+  
+  console.log("🔍 Equipment Comparison Analysis");
+  console.log(`📋 Existing equipment count: ${existingEquipment.length}`);
+  console.log(`📦 New equipment list count: ${newEquipmentList.length}`);
+  console.log(`🔢 Unique new equipment numbers: ${newSet.size}`);
+  
+  // Debug: Show first 10 existing equipment numbers
+  console.log("🏗️ First 10 existing equipment numbers:");
+  existingEquipment.slice(0, 10).forEach(num => console.log(`   ${num}`));
+  
+  // Debug: Show first 10 new equipment numbers
+  console.log("📦 First 10 new equipment numbers:");
+  newEquipmentList.slice(0, 10).forEach(item => console.log(`   ${item.equipmentNumber}`));
+  
+  const newEquipment = newEquipmentList.filter(item => !existingSet.has(item.equipmentNumber));
+  const existingEquipmentInNew = newEquipmentList.filter(item => existingSet.has(item.equipmentNumber));
+  const removedEquipment = existingEquipment.filter(equipNum => !newSet.has(equipNum));
+  
+  console.log(`🆕 New equipment found: ${newEquipment.length}`);
+  console.log(`✅ Existing equipment in new list: ${existingEquipmentInNew.length}`);
+  console.log(`❌ Removed equipment: ${removedEquipment.length}`);
+  
+  return {
+    newEquipment,
+    existingEquipment: existingEquipmentInNew,
+    removedEquipment
+  };
+};
+
+// FIXED: Export WBS to CSV format
+export const exportWBSToCSV = (wbsNodes, filename) => {
+  const csvContent = [
+    'wbs_code,parent_wbs_code,wbs_name',
+    ...wbsNodes.map(node => 
+      `"${node.wbs_code}","${node.parent_wbs_code || ''}","${node.wbs_name}"`
+    )
+  ].join('\n');
+
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `${filename}.csv`;
+  link.click();
+  
+  URL.revokeObjectURL(url);
+};
+
+// FIXED: Export project state to JSON
+export const exportProjectState = (projectState) => {
+  const dataStr = JSON.stringify(projectState, null, 2);
+  const dataBlob = new Blob([dataStr], { type: 'application/json' });
+  const url = URL.createObjectURL(dataBlob);
+  
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `${projectState.projectName}_project_state.json`;
+  link.click();
+  
+  URL.revokeObjectURL(url);
 };
