@@ -1,18 +1,4 @@
-// src/components/utils/wbsUtils.js - Updated with parent-based categorization logic
-
-export const categoryMapping = {
-  '01': 'Preparations and set-up',
-  '02': 'Protection Panels',
-  '03': 'HV Switchboards',
-  '04': 'LV Switchboards',
-  '05': 'Transformers',
-  '06': 'Battery Systems',
-  '07': 'Earthing',
-  '08': 'Building Services',
-  '09': 'Interface Testing',
-  '10': 'Ancillary Systems',
-  '99': 'Unrecognised Equipment'
-};
+import { categoryMapping, equipmentPatterns, standardWBSCategories } from './constants.js';
 
 // FIXED: Parent-based equipment categorization
 export const determineCategoryCode = (equipment, allEquipment) => {
@@ -43,18 +29,7 @@ const determineCategoryCodeForParent = (equipment) => {
   const equipmentNumber = equipment.equipmentNumber?.toUpperCase() || '';
   const plu = equipment.plu ? equipment.plu.toUpperCase() : '';
   
-  const categoryPatterns = {
-    '02': ['+UH', 'UH'], // Protection Panels
-    '03': ['+WA', 'WA'], // HV Switchboards
-    '04': ['+WC', 'WC'], // LV Switchboards
-    '05': ['T', 'NET', 'TA', 'NER'], // Transformers
-    '06': ['+GB', 'GB', 'BAN'], // Battery Systems
-    '07': ['E', 'EB', 'EEP', 'MEB'], // Earthing
-    '08': ['+HN', 'HN', 'PC', 'FM', 'FIP', 'LT', 'LTP', 'LCT', 'GPO', 'VDO', 'ACS', 'ACR', 'CTV', 'HRN', 'EHT', 'HTP', 'MCP', 'DET', 'ASD', 'IND', 'BEA', 'Fire', 'ESS'], // Building Services
-    '10': ['+CA', 'CA', 'PSU', 'UPS', 'BCR', 'G', 'BSG', 'GTG', 'GT', 'GC', 'WTG', 'SVC', 'HFT', 'RA', 'R', 'FC', 'CP', 'LCS', 'IOP', 'ITP', 'IJB', 'CPU', 'X', 'XB', 'XD', 'H', 'D', 'CB', 'GCB', 'SA', 'LSW', 'MCC', 'DOL', 'VFD', 'ATS', 'MTS', 'Q', 'K'] // Ancillary Systems
-  };
-  
-  for (const [categoryCode, patterns] of Object.entries(categoryPatterns)) {
+  for (const [categoryCode, patterns] of Object.entries(equipmentPatterns)) {
     for (const pattern of patterns) {
       if (categoryCode === '07') {
         // Special handling for earthing category
@@ -133,11 +108,26 @@ export const processEquipmentByCategory = (subsystemEquipment, allEquipment) => 
   return categoryGroups;
 };
 
+// Format subsystem name helper
+export const formatSubsystemName = (subsystem) => {
+  const zMatch = subsystem.match(/Z\d+/i);
+  if (zMatch) {
+    const zCode = zMatch[0].toUpperCase();
+    let cleanName = subsystem.replace(/[-\s]*\+?Z\d+[-\s]*/i, '').trim();
+    cleanName = cleanName.replace(/[-\s\+]+$/, '').trim();
+    cleanName = cleanName.replace(/^[-\s\+]+/, '').trim();
+    return `+${zCode} - ${cleanName}`;
+  }
+  return subsystem;
+};
+
 // FIXED: Modern structure generation with parent-based categorization
 export const generateModernStructure = (nodes, subsystemId, subsystem, data, allEquipment) => {
   let categoryCounter = 1;
   
   const orderedCategoryKeys = ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '99'];
+  
+  console.log(`🏗️ Generating structure for subsystem: ${subsystem}`);
   
   orderedCategoryKeys.forEach(number => {
     const name = categoryMapping[number];
@@ -233,23 +223,16 @@ export const generateModernStructure = (nodes, subsystemId, subsystem, data, all
 
     categoryCounter++;
   });
+  
+  console.log(`✅ Generated ${nodes.length} nodes for subsystem: ${subsystem}`);
 };
 
-// Format subsystem name helper
-export const formatSubsystemName = (subsystem) => {
-  const zMatch = subsystem.match(/Z\d+/i);
-  if (zMatch) {
-    const zCode = zMatch[0].toUpperCase();
-    let cleanName = subsystem.replace(/[-\s]*\+?Z\d+[-\s]*/i, '').trim();
-    cleanName = cleanName.replace(/[-\s\+]+$/, '').trim();
-    cleanName = cleanName.replace(/^[-\s\+]+/, '').trim();
-    return `+${zCode} - ${cleanName}`;
-  }
-  return subsystem;
-};
-
-// FIXED: Enhanced WBS generation with parent-based categorization (for StartNewProject.jsx)
-export const generateNewProjectWBS = (data, projectName, projectState, uploadMode) => {
+// Main WBS generation function
+export const generateWBS = (data, projectName, uploadMode, projectState) => {
+  console.log(`🚀 Starting WBS generation for project: ${projectName}`);
+  console.log(`   Mode: ${uploadMode}`);
+  console.log(`   Equipment items: ${data.length}`);
+  
   const allNodes = [];
   const newNodes = [];
   let subsystemCounter = projectState?.lastWbsCode ? projectState.lastWbsCode : 3;
@@ -265,7 +248,7 @@ export const generateNewProjectWBS = (data, projectName, projectState, uploadMod
     wbs_name: projectName
   });
 
-  // Add milestones node
+  // Add milestones and prerequisites
   const milestonesId = "1.1";
   allNodes.push({
     wbs_code: milestonesId,
@@ -273,7 +256,6 @@ export const generateNewProjectWBS = (data, projectName, projectState, uploadMod
     wbs_name: "M | Milestones"
   });
 
-  // Add prerequisites node
   const prerequisitesId = "1.2";
   allNodes.push({
     wbs_code: prerequisitesId,
@@ -300,18 +282,10 @@ export const generateNewProjectWBS = (data, projectName, projectState, uploadMod
     });
   }
 
-  // Enhanced processing
-  console.log('🏗️ ENHANCED: Generating new project WBS structure...');
-  
-  // CRITICAL: Get all equipment data for parent-child relationships
-  const allEquipmentData = data; // This is the complete equipment list
-  const commissionedEquipment = data.filter(item => item.commissioning === 'Y');
-  
-  console.log(`📊 Total commissioned equipment to process: ${commissionedEquipment.length}`);
-  
   // Get unique subsystems from commissioned equipment
-  const rawSubsystems = [...new Set(commissionedEquipment.map(item => item.subsystem))];
+  const rawSubsystems = [...new Set(data.filter(item => item.commissioning === 'Y').map(item => item.subsystem))];
   
+  // Sort subsystems
   const subsystems = rawSubsystems.sort((a, b) => {
     const aFormatted = formatSubsystemName(a);
     const bFormatted = formatSubsystemName(b);
@@ -335,17 +309,16 @@ export const generateNewProjectWBS = (data, projectName, projectState, uploadMod
     return aFormatted.localeCompare(bFormatted);
   });
   
-  console.log(`🏗️ Processing ${subsystems.length} subsystems`);
+  console.log(`📋 Processing ${subsystems.length} subsystems`);
   
   // Process each subsystem
   subsystems.forEach((subsystem, index) => {
-    console.log(`🏗️ Generating structure for subsystem: ${subsystem}`);
+    console.log(`\n🔧 Processing subsystem ${index + 1}/${subsystems.length}: ${subsystem}`);
     
     const formattedSubsystemName = formatSubsystemName(subsystem);
     const subsystemId = `1.${subsystemCounter}`;
     const subsystemLabel = `S${existingSubsystemCount + index + 1} | ${formattedSubsystemName}`;
     
-    // Add subsystem node
     const subsystemNode = {
       wbs_code: subsystemId,
       parent_wbs_code: "1",
@@ -376,15 +349,10 @@ export const generateNewProjectWBS = (data, projectName, projectState, uploadMod
       wbs_name: formattedSubsystemName
     });
 
-    // Get subsystem equipment
-    const subsystemEquipment = commissionedEquipment.filter(item => item.subsystem === subsystem);
-    console.log(`   📦 Found ${subsystemEquipment.length} commissioned equipment items`);
-
-    // FIXED: Generate modern structure with allEquipmentData for parent-child relationships
+    // Generate subsystem structure
     const subsystemStructure = [];
-    generateModernStructure(subsystemStructure, subsystemId, subsystem, data, allEquipmentData);
+    generateModernStructure(subsystemStructure, subsystemId, subsystem, data, data);
     
-    // Add subsystem structure to nodes
     subsystemStructure.forEach(node => {
       allNodes.push({
         ...node,
@@ -393,14 +361,13 @@ export const generateNewProjectWBS = (data, projectName, projectState, uploadMod
       newNodes.push(node);
     });
     
-    console.log(`   ✅ Processed ${subsystemEquipment.length} equipment items for ${subsystem}`);
     subsystemCounter++;
   });
 
-  // Process TBC equipment
+  // Handle TBC equipment
   const tbcEquipment = data.filter(item => item.commissioning === 'TBC');
   if (tbcEquipment.length > 0) {
-    console.log(`⏳ Processing ${tbcEquipment.length} TBC equipment items`);
+    console.log(`\n⏳ Processing ${tbcEquipment.length} TBC equipment items`);
     
     const tbcId = `1.${subsystemCounter}`;
     const tbcNode = {
@@ -435,38 +402,24 @@ export const generateNewProjectWBS = (data, projectName, projectState, uploadMod
     });
   }
 
-  // Log completion summary
-  console.log('✅ ENHANCED WBS Generation Complete:');
-  console.log(`   - Total WBS nodes: ${allNodes.length}`);
-  console.log(`   - Subsystems: ${subsystems.length}`);
-  console.log(`   - Commissioned equipment processed: ${commissionedEquipment.length}`);
-  console.log(`   - Expected commissioned equipment: ${commissionedEquipment.length}`);
-  console.log(`   - Missing equipment: 0`);
-
-  // Return appropriate nodes based on upload mode
-  if (uploadMode === 'new') {
-    return {
-      wbsVisualization: allNodes,
-      wbsOutput: allNodes,
-      projectState: {
-        projectName,
-        lastWbsCode: subsystemCounter,
-        subsystems: [...(projectState?.subsystems || []), ...subsystems.map(formatSubsystemName)],
-        wbsNodes: allNodes,
-        timestamp: new Date().toISOString()
-      }
-    };
-  } else {
-    return {
-      wbsVisualization: allNodes,
-      wbsOutput: newNodes,
-      projectState: {
-        projectName,
-        lastWbsCode: subsystemCounter,
-        subsystems: [...(projectState?.subsystems || []), ...subsystems.map(formatSubsystemName)],
-        wbsNodes: allNodes,
-        timestamp: new Date().toISOString()
-      }
-    };
-  }
+  // Create new project state
+  const newProjectState = {
+    projectName,
+    lastWbsCode: subsystemCounter,
+    subsystems: [...(projectState?.subsystems || []), ...subsystems.map(formatSubsystemName)],
+    wbsNodes: allNodes,
+    timestamp: new Date().toISOString()
+  };
+  
+  console.log(`✅ WBS generation complete:`);
+  console.log(`   Total nodes: ${allNodes.length}`);
+  console.log(`   New nodes: ${newNodes.length}`);
+  console.log(`   Subsystems: ${subsystems.length}`);
+  console.log(`   TBC equipment: ${tbcEquipment.length}`);
+  
+  return {
+    allNodes,
+    newNodes: uploadMode === 'new' ? allNodes : newNodes,
+    newProjectState
+  };
 };
