@@ -1,6 +1,6 @@
 // src/components/utils/equipmentUtils.js
 
-import { columnMapping, invalidEquipmentPatterns } from './constants';
+import { columnMapping, invalidEquipmentPatterns } from './constants.js';
 
 /**
  * Validates if an equipment number is valid for WBS processing
@@ -31,11 +31,12 @@ export const isValidEquipmentNumber = (equipmentNumber) => {
 };
 
 /**
- * Processes an equipment file (Excel or CSV) and returns standardized equipment array
+ * FIXED: Processes an equipment file (Excel or CSV) and returns standardized equipment array
  * @param {File} file - The uploaded file
+ * @param {Object} columnMapping - Column mapping object from constants
  * @returns {Array} - Array of equipment objects
  */
-export const processEquipmentFile = async (file) => {
+export const processEquipmentFile = async (file, columnMappingParam) => {
   let equipmentList = [];
   
   try {
@@ -60,11 +61,11 @@ export const processEquipmentFile = async (file) => {
       const headerRow = jsonData[0];
       const dataRows = jsonData.slice(1);
       
-      // Map data using column mapping
+      // FIXED: Use the columnMapping parameter properly
       equipmentList = dataRows.map(row => {
         const equipment = {};
         headerRow.forEach((header, index) => {
-          const mappedField = columnMapping[header];
+          const mappedField = columnMappingParam[header];
           if (mappedField) {
             equipment[mappedField] = row[index] || '';
           }
