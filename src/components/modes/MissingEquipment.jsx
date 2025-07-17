@@ -1,8 +1,8 @@
 import React, { useRef, useState } from 'react';
 import { Upload, FileText, AlertTriangle, CheckCircle, Eye, EyeOff } from 'lucide-react';
-import { rjeColors } from '../utils/constants';
-import { processEquipmentFile } from '../utils/equipmentUtils';
-import { generateMissingEquipmentWBS } from '../utils/wbsUtils';
+import { rjeColors } from '../utils/constants.js';
+import { processEquipmentFile } from '../utils/equipmentUtils.js';
+import { generateMissingEquipmentWBS } from '../utils/wbsUtils.js';
 
 const MissingEquipment = ({ 
   isProcessing, 
