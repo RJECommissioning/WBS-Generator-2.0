@@ -63,14 +63,23 @@ const determineCategoryCodeForParent = (equipment) => {
   for (const [categoryCode, patterns] of Object.entries(categoryPatterns)) {
     for (const pattern of patterns) {
       if (categoryCode === '05') {
-        // FIXED: Enhanced Transformer matching
+        // ENHANCED: Transformer matching with debugging
         if (pattern === 'T' && equipmentNumber.match(/^T\d+/)) {
           console.log(`🔌 Equipment ${equipmentNumber} matches Transformer pattern T + numbers`);
           return categoryCode;
         }
-        if (pattern === 'NET' && equipmentNumber.startsWith('NET')) return categoryCode;
-        if (pattern === 'TA' && equipmentNumber.startsWith('TA')) return categoryCode;
-        if (pattern === 'NER' && equipmentNumber.startsWith('NER')) return categoryCode;
+        if (pattern === 'NET' && equipmentNumber.startsWith('NET')) {
+          console.log(`🔌 Equipment ${equipmentNumber} matches NET pattern`);
+          return categoryCode;
+        }
+        if (pattern === 'TA' && equipmentNumber.startsWith('TA')) {
+          console.log(`🔌 Equipment ${equipmentNumber} matches TA pattern`);
+          return categoryCode;
+        }
+        if (pattern === 'NER' && equipmentNumber.startsWith('NER')) {
+          console.log(`🔌 Equipment ${equipmentNumber} matches NER pattern`);
+          return categoryCode;
+        }
       } else if (categoryCode === '07') {
         // Special handling for earthing category
         if (pattern === 'E' && equipmentNumber.startsWith('E') && 
@@ -176,15 +185,17 @@ export const extractEquipmentNumbers = (wbsNodes) => {
     /^\d{4}.*/ // Project codes like 5737
   ];
   
-  // ENHANCED: Better equipment patterns including TBC patterns
+  // ENHANCED: Better equipment patterns including all T transformer patterns
   const equipmentPatterns = [
-    /^[A-Z]+\d+/, // T11, HN10, etc.
+    /^[A-Z]+\d+/, // T11, T21, HN10, etc.
     /^[+-][A-Z]+\d+/, // +UH101, -F102, +WA10, etc.
     /^[A-Z]+\d+-[A-Z0-9-]+/, // EG01-1000-01, etc.
     /^[A-Z]+\d+\/[A-Z]/, // -F01/X, etc.
     /^-[A-Z]+.*/, // -ESC-1.1, etc.
     /^[A-Z]+.*-\d+/, // SOLB-1.1-01, etc.
-    /^T\d+.*/ // T3800-1, T3800-2, etc.
+    /^T\d+.*/, // T3800-1, T3800-2, etc.
+    /^T1[0-9]$/, // T10, T11, T12, etc. (single/double digit transformers)
+    /^T2[0-9]$/ // T20, T21, T22, etc. (single/double digit transformers)
   ];
   
   wbsNodes.forEach(node => {
@@ -228,12 +239,12 @@ export const extractEquipmentNumbers = (wbsNodes) => {
       if (equipmentNumber && equipmentPatterns.some(pattern => pattern.test(equipmentNumber))) {
         equipmentNumbers.push(equipmentNumber);
         processedCount++;
-        if (processedCount <= 10) {
+        if (processedCount <= 15 || equipmentNumber === 'T11' || equipmentNumber === 'T21') {
           console.log(`   ✅ Extracted equipment: "${equipmentNumber}" from "${wbsName}"`);
         }
       } else {
         skippedCount++;
-        if (skippedCount <= 5) {
+        if (skippedCount <= 5 || equipmentNumber === 'T11' || equipmentNumber === 'T21') {
           console.log(`   🚫 Invalid equipment: "${equipmentNumber}" from "${wbsName}"`);
         }
       }
@@ -479,6 +490,16 @@ export const generateMissingEquipmentWBS = (newEquipmentList, existingWbsNodes, 
   const missingEquipment = commissionedEquipment.filter(item => {
     const equipmentNumber = item.equipmentNumber?.trim();
     const exists = existingEquipmentSet.has(equipmentNumber);
+    
+    // Enhanced debugging for T11 and T21
+    if (equipmentNumber === 'T11' || equipmentNumber === 'T21') {
+      console.log(`🔍 DEBUG ${equipmentNumber}:`);
+      console.log(`   Equipment Number: "${equipmentNumber}"`);
+      console.log(`   Exists in extracted list: ${exists}`);
+      console.log(`   Commissioning: ${item.commissioning}`);
+      console.log(`   Subsystem: ${item.subsystem}`);
+    }
+    
     return !exists; // Return true if equipment is missing
   });
   
