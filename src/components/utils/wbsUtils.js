@@ -30,7 +30,7 @@ export const extractEquipmentNumbers = (wbsNodes) => {
     /^M\s*\|\s*/, // M | Milestones
     /^P\s*\|\s*/, // P | Pre-requisites
     /^S\d+\s*\|\s*/, // S1 | Subsystem, S2 | Subsystem, etc.
-    /^TBC\s*-\s*/, // TBC - Equipment To Be Confirmed
+    // REMOVED: /^TBC\s*-\s*/, // TBC - Equipment To Be Confirmed - NOW PROCESSED!
     /^Test bay$/, /^Panel Shop$/, /^Pad$/, /^Phase 1$/, /^Phase 2$/,
     /^\d{4}.*/ // Project codes like 5737
   ];
@@ -46,57 +46,98 @@ export const extractEquipmentNumbers = (wbsNodes) => {
     /^[A-Z]{2,}\d+$/ // Any 2+ letter prefix with numbers
   ];
   
+  // CRITICAL FIX: Create a map of parent-child relationships
+  const parentChildMap = new Map();
   wbsNodes.forEach(node => {
-    if (node.wbs_name && node.wbs_name.includes('|')) {
-      const parts = node.wbs_name.split('|');
-      if (parts.length >= 2) {
-        const firstPart = parts[0].trim();
-        const secondPart = parts[1].trim();
-        
-        // Build subsystem mapping for later use
-        if (firstPart.startsWith('S') && firstPart.includes(' ')) {
-          existingSubsystems.set(secondPart, node.wbs_code);
-        }
-        
-        // Check if this is a WBS structure element that should be ignored
-        const shouldIgnore = ignorePatterns.some(pattern => 
-          pattern.test(firstPart) || pattern.test(node.wbs_name)
-        );
-        
-        if (shouldIgnore) {
-          skippedCount++;
-          if (skippedCount <= 5) {
-            console.log(`   🚫 Ignored WBS structure: "${node.wbs_name}"`);
-          }
-          return;
-        }
-        
-        // ENHANCED: Check both parts for equipment patterns
-        let equipmentFound = false;
-        
-        // Check first part
-        if (equipmentPatterns.some(pattern => pattern.test(firstPart))) {
-          equipmentNumbers.push(firstPart);
-          processedCount++;
-          equipmentFound = true;
-          if (processedCount <= 15) {
-            console.log(`   ✅ Extracted equipment: "${firstPart}" from "${node.wbs_name}"`);
-          }
-        }
-        
-        // Check second part if first part wasn't equipment
-        if (!equipmentFound && equipmentPatterns.some(pattern => pattern.test(secondPart))) {
-          equipmentNumbers.push(secondPart);
-          processedCount++;
-          if (processedCount <= 15) {
-            console.log(`   ✅ Extracted equipment: "${secondPart}" from "${node.wbs_name}"`);
+    if (node.parent_wbs_code) {
+      const parent = wbsNodes.find(n => n.wbs_code === node.parent_wbs_code);
+      if (parent) {
+        parentChildMap.set(node.wbs_code, parent.wbs_name);
+      }
+    }
+  });
+  
+  wbsNodes.forEach(node => {
+    if (node.wbs_name) {
+      // CRITICAL FIX: Check if this node is under a TBC section
+      const parentName = parentChildMap.get(node.wbs_code);
+      const isTBCChild = parentName && parentName.includes('TBC - Equipment To Be Confirmed');
+      
+      // Handle TBC section parent node
+      if (node.wbs_name.includes('TBC - Equipment To Be Confirmed')) {
+        console.log(`   🔧 Found TBC section: "${node.wbs_name}"`);
+        skippedCount++;
+        return; // Skip the TBC parent node itself
+      }
+      
+      // Handle TBC child nodes (the actual equipment)
+      if (isTBCChild && node.wbs_name.includes('|')) {
+        const parts = node.wbs_name.split('|');
+        if (parts.length >= 2) {
+          const firstPart = parts[0].trim();
+          
+          // Extract equipment from TBC section
+          if (equipmentPatterns.some(pattern => pattern.test(firstPart))) {
+            equipmentNumbers.push(firstPart);
+            processedCount++;
+            console.log(`   ✅ Extracted TBC equipment: "${firstPart}" from "${node.wbs_name}"`);
+            return;
           }
         }
-        
-        if (!equipmentFound) {
-          skippedCount++;
-          if (skippedCount <= 10) {
-            console.log(`   🚫 Skipped: "${node.wbs_name}" (no equipment pattern)`);
+      }
+      
+      // Handle normal equipment nodes (non-TBC)
+      if (node.wbs_name.includes('|')) {
+        const parts = node.wbs_name.split('|');
+        if (parts.length >= 2) {
+          const firstPart = parts[0].trim();
+          const secondPart = parts[1].trim();
+          
+          // Build subsystem mapping for later use
+          if (firstPart.startsWith('S') && firstPart.includes(' ')) {
+            existingSubsystems.set(secondPart, node.wbs_code);
+          }
+          
+          // Check if this is a WBS structure element that should be ignored
+          const shouldIgnore = ignorePatterns.some(pattern => 
+            pattern.test(firstPart) || pattern.test(node.wbs_name)
+          );
+          
+          if (shouldIgnore) {
+            skippedCount++;
+            if (skippedCount <= 5) {
+              console.log(`   🚫 Ignored WBS structure: "${node.wbs_name}"`);
+            }
+            return;
+          }
+          
+          // ENHANCED: Check both parts for equipment patterns
+          let equipmentFound = false;
+          
+          // Check first part
+          if (equipmentPatterns.some(pattern => pattern.test(firstPart))) {
+            equipmentNumbers.push(firstPart);
+            processedCount++;
+            equipmentFound = true;
+            if (processedCount <= 15) {
+              console.log(`   ✅ Extracted equipment: "${firstPart}" from "${node.wbs_name}"`);
+            }
+          }
+          
+          // Check second part if first part wasn't equipment
+          if (!equipmentFound && equipmentPatterns.some(pattern => pattern.test(secondPart))) {
+            equipmentNumbers.push(secondPart);
+            processedCount++;
+            if (processedCount <= 15) {
+              console.log(`   ✅ Extracted equipment: "${secondPart}" from "${node.wbs_name}"`);
+            }
+          }
+          
+          if (!equipmentFound) {
+            skippedCount++;
+            if (skippedCount <= 10) {
+              console.log(`   🚫 Skipped: "${node.wbs_name}" (no equipment pattern)`);
+            }
           }
         }
       }
@@ -116,6 +157,20 @@ export const extractEquipmentNumbers = (wbsNodes) => {
   console.log(`\n🔍 CRITICAL: Checking for T11 and T21:`);
   console.log(`   T11 found: ${uniqueEquipment.includes('T11') ? '✅ YES' : '❌ NO'}`);
   console.log(`   T21 found: ${uniqueEquipment.includes('T21') ? '✅ YES' : '❌ NO'}`);
+  
+  // CRITICAL: Log TBC equipment extraction
+  const tbcEquipment = uniqueEquipment.filter(eq => 
+    wbsNodes.some(node => {
+      const parentName = parentChildMap.get(node.wbs_code);
+      return parentName && parentName.includes('TBC - Equipment To Be Confirmed') && 
+             node.wbs_name.includes(eq);
+    })
+  );
+  
+  console.log(`\n⏳ TBC Equipment extracted: ${tbcEquipment.length}`);
+  if (tbcEquipment.length > 0) {
+    console.log(`   TBC equipment found: ${tbcEquipment.slice(0, 10).join(', ')}`);
+  }
   
   return { equipmentNumbers: uniqueEquipment, existingSubsystems };
 };
