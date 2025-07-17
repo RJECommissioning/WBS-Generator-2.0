@@ -1,8 +1,7 @@
 // src/App.jsx
-
 import React, { useState } from 'react';
-import { rjeColors } from './components/utils/constants';
-import WBSGenerator from './components/utils/WBSGenerator';
+import { rjeColors } from './components/utils/constants.js';
+import WBSGenerator from './components/WBSGenerator.jsx';
 
 const App = () => {
   return (
@@ -19,7 +18,6 @@ const App = () => {
             <p className="text-sm mt-2 opacity-75">Modern Architecture (v4.0) - Production Ready</p>
           </div>
         </div>
-
         {/* Main Generator Interface */}
         <WBSGenerator />
       </div>
