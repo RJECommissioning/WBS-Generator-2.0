@@ -1,4 +1,4 @@
-// src/components/utils/wbsUtils.js - FINAL FIX for TBC and Missing Equipment Issues
+// src/components/utils/wbsUtils.js - FINAL FIX for TBC and Missing Equipment Issues + T11/T21 DEBUG
 
 export const categoryMapping = {
   '01': 'Preparations and set-up',
@@ -281,11 +281,27 @@ export const findNextWBSCode = (parentWbsCode, existingNodes) => {
   return `${parentWbsCode}.${maxChildNumber + 1}`;
 };
 
-// FIXED: Modern structure generation with proper TBC handling
+// FIXED: Modern structure generation with proper TBC handling + COMPREHENSIVE T11/T21 DEBUG
 export const generateModernStructure = (nodes, subsystemId, subsystem, data) => {
   let categoryCounter = 1;
   
   const orderedCategoryKeys = ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '99'];
+  
+  // ====== CRITICAL DEBUG: Check if T11/T21 are in this subsystem ======
+  const allSubsystemEquipment = data.filter(item => item.subsystem === subsystem);
+  const t11InSubsystem = allSubsystemEquipment.find(item => item.equipmentNumber === 'T11');
+  const t21InSubsystem = allSubsystemEquipment.find(item => item.equipmentNumber === 'T21');
+  
+  if (t11InSubsystem || t21InSubsystem) {
+    console.log(`🎯 CRITICAL DEBUG: Processing subsystem "${subsystem}"`);
+    if (t11InSubsystem) {
+      console.log(`   📍 T11 found in this subsystem: ${t11InSubsystem.equipmentNumber} (${t11InSubsystem.commissioning})`);
+    }
+    if (t21InSubsystem) {
+      console.log(`   📍 T21 found in this subsystem: ${t21InSubsystem.equipmentNumber} (${t21InSubsystem.commissioning})`);
+    }
+  }
+  // ====== END CRITICAL DEBUG ======
   
   orderedCategoryKeys.forEach(number => {
     const name = categoryMapping[number];
@@ -297,6 +313,84 @@ export const generateModernStructure = (nodes, subsystemId, subsystem, data) => 
       parent_wbs_code: subsystemId,
       wbs_name: `${number} | ${name}`
     });
+
+    // ====== ENHANCED DEBUG FOR CATEGORY 05 (TRANSFORMERS) ======
+    if (number === '05') {
+      console.log(`\n🔧 DEBUG: Processing category 05 (Transformers) for subsystem: ${subsystem}`);
+      
+      // Step 1: Filter by subsystem and commissioning
+      const subsystemEquipment = data.filter(item => 
+        item.subsystem === subsystem && 
+        item.commissioning === 'Y'
+      );
+      
+      console.log(`   📦 Subsystem equipment count (commissioned): ${subsystemEquipment.length}`);
+      
+      // Step 2: Check specifically for T11, T21, T10, T20
+      const transformerItems = subsystemEquipment.filter(item => 
+        item.equipmentNumber && item.equipmentNumber.match(/^T\d+$/)
+      );
+      
+      console.log(`   🔌 Found transformer items in subsystem:`, transformerItems.map(t => 
+        `${t.equipmentNumber} (${t.commissioning})`
+      ));
+      
+      // Step 3: Test categorization for each transformer
+      transformerItems.forEach(item => {
+        const category = determineCategoryCode(item, data);
+        console.log(`   🏷️ ${item.equipmentNumber} categorized as: ${category}`);
+      });
+      
+      // Step 4: Filter equipment for THIS category
+      const categoryEquipment = subsystemEquipment.filter(item => {
+        const category = determineCategoryCode(item, data);
+        const matches = category === number;
+        if ((item.equipmentNumber === 'T11' || item.equipmentNumber === 'T21') && !matches) {
+          console.log(`   ❌ ${item.equipmentNumber} NOT included in category ${number} (got category ${category})`);
+        } else if (item.equipmentNumber === 'T11' || item.equipmentNumber === 'T21') {
+          console.log(`   ✅ ${item.equipmentNumber} INCLUDED in category ${number}`);
+        }
+        return matches;
+      });
+      
+      console.log(`   🎯 Equipment in category 05: ${categoryEquipment.length} items`);
+      const transformersInCategory = categoryEquipment.filter(item => 
+        item.equipmentNumber && item.equipmentNumber.match(/^T\d+$/)
+      );
+      console.log(`   🔌 Transformers in category 05:`, transformersInCategory.map(t => t.equipmentNumber));
+      
+      // Step 5: Check parent-child filtering
+      if (categoryEquipment.length > 0) {
+        const parentEquipment = categoryEquipment.filter(item => {
+          const hasParentInCategory = categoryEquipment.some(potentialParent => 
+            potentialParent.equipmentNumber === item.parentEquipmentNumber
+          );
+          const isParent = !hasParentInCategory;
+          
+          if ((item.equipmentNumber === 'T11' || item.equipmentNumber === 'T21')) {
+            console.log(`   👨‍👦 ${item.equipmentNumber} parent check:`);
+            console.log(`      Parent Equipment Number: "${item.parentEquipmentNumber}"`);
+            console.log(`      Has parent in same category: ${hasParentInCategory}`);
+            console.log(`      Will be processed as parent: ${isParent}`);
+          }
+          
+          return isParent;
+        });
+        
+        console.log(`   👨‍👦 Parent equipment in category 05: ${parentEquipment.length} items`);
+        const parentTransformers = parentEquipment.filter(item => 
+          item.equipmentNumber && item.equipmentNumber.match(/^T\d+$/)
+        );
+        console.log(`   🔌 Parent transformers:`, parentTransformers.map(t => t.equipmentNumber));
+        
+        // Check if T11/T21 are in parent equipment
+        const hasT11 = parentTransformers.some(t => t.equipmentNumber === 'T11');
+        const hasT21 = parentTransformers.some(t => t.equipmentNumber === 'T21');
+        console.log(`   🔍 T11 will be added to WBS: ${hasT11}`);
+        console.log(`   🔍 T21 will be added to WBS: ${hasT21}`);
+      }
+    }
+    // ====== END ENHANCED DEBUG ======
 
     // Add preparation items for category 01
     if (number === '01') {
@@ -350,6 +444,13 @@ export const generateModernStructure = (nodes, subsystemId, subsystem, data) => 
       let equipmentCounter = 1;
       parentEquipment.forEach(item => {
         const equipmentId = `${categoryId}.${equipmentCounter}`;
+        
+        // ====== FINAL DEBUG: Log when T11/T21 are added ======
+        if (item.equipmentNumber === 'T11' || item.equipmentNumber === 'T21') {
+          console.log(`🎉 SUCCESS: Adding ${item.equipmentNumber} to WBS with code ${equipmentId}`);
+        }
+        // ====== END FINAL DEBUG ======
+        
         nodes.push({
           wbs_code: equipmentId,
           parent_wbs_code: categoryId,
