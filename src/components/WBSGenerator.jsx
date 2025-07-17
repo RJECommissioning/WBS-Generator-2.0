@@ -6,8 +6,7 @@ import { Upload, Download, Settings, Plus, FileText, Zap, ChevronRight, ChevronD
 // Import utilities
 import { rjeColors, uploadModes, errorMessages, successMessages } from './utils/constants.js';
 import { processEquipmentFile, processWBSFile, exportWBSToCSV, exportProjectState } from './utils/equipmentUtils.js';
-import { generateWBS } from './utils/wbsUtils.js';
-import { generateMissingEquipmentWBS } from './utils/missingEquipmentUtils.js';
+import { generateWBS, generateMissingEquipmentWBS } from './utils/wbsUtils.js';
 
 // Project Context for state management
 const ProjectContext = createContext({
