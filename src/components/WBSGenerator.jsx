@@ -1,473 +1,115 @@
-// src/components/WBSGenerator.jsx - Main orchestrator component
+import React, { useState, createContext, useContext } from 'react';
+import WorkflowSelector from './shared/WorkflowSelector.jsx';
+import StartNewProject from './modes/StartNewProject.jsx';
+import ContinueProject from './modes/ContinueProject.jsx';
+import MissingEquipment from './modes/MissingEquipment.jsx';
+import WBSTreeVisualization from './shared/WBSTreeVisualization.jsx';
+import ExportPanel from './shared/ExportPanel.jsx';
+import { rjeColors } from './utils/constants.js';
 
-import { 
-  generateModernStructure, 
-  formatSubsystemName, 
-  processEquipmentByCategory,
-  enhancedCategorizeEquipment 
-} from './utils/wbsUtils.js';
+const ProjectContext = createContext({
+  projectState: null,
+  setProjectState: () => {}
+});
 
-// FIXED: Enhanced WBS generation with parent-based categorization
-export const generateWBS = (data, projectName, projectState, uploadMode) => {
-  const allNodes = [];
-  const newNodes = [];
-  let subsystemCounter = projectState?.lastWbsCode ? projectState.lastWbsCode : 3;
-  let tbcCounter = 1;
+const WBSGeneratorApp = () => {
+  const [projectState, setProjectState] = useState(null);
 
-  const existingSubsystemCount = projectState?.subsystems?.length || 0;
-
-  // Add root project node
-  const projectId = "1";
-  allNodes.push({
-    wbs_code: projectId,
-    parent_wbs_code: null,
-    wbs_name: projectName
-  });
-
-  // Add milestones node
-  const milestonesId = "1.1";
-  allNodes.push({
-    wbs_code: milestonesId,
-    parent_wbs_code: projectId,
-    wbs_name: "M | Milestones"
-  });
-
-  // Add prerequisites node
-  const prerequisitesId = "1.2";
-  allNodes.push({
-    wbs_code: prerequisitesId,
-    parent_wbs_code: projectId,
-    wbs_name: "P | Pre-requisites"
-  });
-
-  // Add existing nodes if continuing project
-  if (projectState?.wbsNodes && projectState.wbsNodes.length > 0) {
-    const existingNodes = projectState.wbsNodes.filter(node => 
-      node.wbs_code !== "1" && 
-      node.wbs_code !== "1.1" && 
-      node.wbs_code !== "1.2" &&
-      !node.wbs_name.includes("TBC - Equipment To Be Confirmed")
-    );
-    
-    existingNodes.forEach(node => {
-      if (!allNodes.some(existing => existing.wbs_code === node.wbs_code)) {
-        allNodes.push({
-          ...node,
-          isExisting: true
-        });
-      }
-    });
-  }
-
-  // Enhanced processing
-  console.log('🏗️ ENHANCED: Generating new project WBS structure...');
-  
-  // CRITICAL: Get all equipment data for parent-child relationships
-  const allEquipmentData = data; // This is the complete equipment list
-  const commissionedEquipment = data.filter(item => item.commissioning === 'Y');
-  
-  console.log(`📊 Total commissioned equipment to process: ${commissionedEquipment.length}`);
-  
-  // Get unique subsystems from commissioned equipment
-  const rawSubsystems = [...new Set(commissionedEquipment.map(item => item.subsystem))];
-  
-  const subsystems = rawSubsystems.sort((a, b) => {
-    const aFormatted = formatSubsystemName(a);
-    const bFormatted = formatSubsystemName(b);
-    
-    const aIsSubstation = a.toLowerCase().includes('substation');
-    const bIsSubstation = b.toLowerCase().includes('substation');
-    
-    if (aIsSubstation && !bIsSubstation) return 1;
-    if (!aIsSubstation && bIsSubstation) return -1;
-    if (aIsSubstation && bIsSubstation) return 0;
-    
-    const aZMatch = aFormatted.match(/Z(\d+)/);
-    const bZMatch = bFormatted.match(/Z(\d+)/);
-    
-    if (aZMatch && bZMatch) {
-      const aZNum = parseInt(aZMatch[1]);
-      const bZNum = parseInt(bZMatch[1]);
-      return aZNum - bZNum;
-    }
-    
-    return aFormatted.localeCompare(bFormatted);
-  });
-  
-  console.log(`🏗️ Processing ${subsystems.length} subsystems`);
-  
-  // Process each subsystem
-  subsystems.forEach((subsystem, index) => {
-    console.log(`🏗️ Generating structure for subsystem: ${subsystem}`);
-    
-    const formattedSubsystemName = formatSubsystemName(subsystem);
-    const subsystemId = `1.${subsystemCounter}`;
-    const subsystemLabel = `S${existingSubsystemCount + index + 1} | ${formattedSubsystemName}`;
-    
-    // Add subsystem node
-    const subsystemNode = {
-      wbs_code: subsystemId,
-      parent_wbs_code: "1",
-      wbs_name: subsystemLabel,
-      ...(uploadMode === 'continue' && { isNew: true })
-    };
-    
-    allNodes.push(subsystemNode);
-    newNodes.push({
-      wbs_code: subsystemId,
-      parent_wbs_code: "1",
-      wbs_name: subsystemLabel
-    });
-
-    // Add prerequisite node
-    const prerequisiteId = `1.2.${existingSubsystemCount + index + 1}`;
-    const prerequisiteNode = {
-      wbs_code: prerequisiteId,
-      parent_wbs_code: "1.2",
-      wbs_name: formattedSubsystemName,
-      ...(uploadMode === 'continue' && { isNew: true })
-    };
-    
-    allNodes.push(prerequisiteNode);
-    newNodes.push({
-      wbs_code: prerequisiteId,
-      parent_wbs_code: "1.2",
-      wbs_name: formattedSubsystemName
-    });
-
-    // Get subsystem equipment
-    const subsystemEquipment = commissionedEquipment.filter(item => item.subsystem === subsystem);
-    console.log(`   📦 Found ${subsystemEquipment.length} commissioned equipment items`);
-
-    // FIXED: Generate modern structure with allEquipmentData for parent-child relationships
-    const subsystemStructure = [];
-    generateModernStructure(subsystemStructure, subsystemId, subsystem, data, allEquipmentData);
-    
-    // Add subsystem structure to nodes
-    subsystemStructure.forEach(node => {
-      allNodes.push({
-        ...node,
-        ...(uploadMode === 'continue' && { isNew: true })
-      });
-      newNodes.push(node);
-    });
-    
-    console.log(`   ✅ Processed ${subsystemEquipment.length} equipment items for ${subsystem}`);
-    subsystemCounter++;
-  });
-
-  // Process TBC equipment
-  const tbcEquipment = data.filter(item => item.commissioning === 'TBC');
-  if (tbcEquipment.length > 0) {
-    console.log(`⏳ Processing ${tbcEquipment.length} TBC equipment items`);
-    
-    const tbcId = `1.${subsystemCounter}`;
-    const tbcNode = {
-      wbs_code: tbcId,
-      parent_wbs_code: "1",
-      wbs_name: "TBC - Equipment To Be Confirmed",
-      ...(uploadMode === 'continue' && { isNew: true })
-    };
-    
-    allNodes.push(tbcNode);
-    newNodes.push({
-      wbs_code: tbcId,
-      parent_wbs_code: "1",
-      wbs_name: "TBC - Equipment To Be Confirmed"
-    });
-
-    tbcEquipment.forEach(item => {
-      const tbcItemNode = {
-        wbs_code: `${tbcId}.${tbcCounter}`,
-        parent_wbs_code: tbcId,
-        wbs_name: `${item.equipmentNumber} | ${item.description}`,
-        ...(uploadMode === 'continue' && { isNew: true })
-      };
-      
-      allNodes.push(tbcItemNode);
-      newNodes.push({
-        wbs_code: `${tbcId}.${tbcCounter}`,
-        parent_wbs_code: tbcId,
-        wbs_name: `${item.equipmentNumber} | ${item.description}`
-      });
-      tbcCounter++;
-    });
-  }
-
-  // Log completion summary
-  console.log('✅ ENHANCED WBS Generation Complete:');
-  console.log(`   - Total WBS nodes: ${allNodes.length}`);
-  console.log(`   - Subsystems: ${subsystems.length}`);
-  console.log(`   - Commissioned equipment processed: ${commissionedEquipment.length}`);
-  console.log(`   - Expected commissioned equipment: ${commissionedEquipment.length}`);
-  console.log(`   - Missing equipment: 0`);
-
-  // Return appropriate nodes based on upload mode
-  if (uploadMode === 'new') {
-    return {
-      wbsVisualization: allNodes,
-      wbsOutput: allNodes,
-      projectState: {
-        projectName,
-        lastWbsCode: subsystemCounter,
-        subsystems: [...(projectState?.subsystems || []), ...subsystems.map(formatSubsystemName)],
-        wbsNodes: allNodes,
-        timestamp: new Date().toISOString()
-      }
-    };
-  } else {
-    return {
-      wbsVisualization: allNodes,
-      wbsOutput: newNodes,
-      projectState: {
-        projectName,
-        lastWbsCode: subsystemCounter,
-        subsystems: [...(projectState?.subsystems || []), ...subsystems.map(formatSubsystemName)],
-        wbsNodes: allNodes,
-        timestamp: new Date().toISOString()
-      }
-    };
-  }
-};
-// src/components/WBSGenerator.jsx - Main orchestrator component
-
-import { 
-  generateModernStructure, 
-  formatSubsystemName, 
-  processEquipmentByCategory,
-  enhancedCategorizeEquipment 
-} from './utils/wbsUtils.js';
-
-// FIXED: Enhanced WBS generation with parent-based categorization
-export const generateWBS = (data, projectName, projectState, uploadMode) => {
-  const allNodes = [];
-  const newNodes = [];
-  let subsystemCounter = projectState?.lastWbsCode ? projectState.lastWbsCode : 3;
-  let tbcCounter = 1;
-
-  const existingSubsystemCount = projectState?.subsystems?.length || 0;
-
-  // Add root project node
-  const projectId = "1";
-  allNodes.push({
-    wbs_code: projectId,
-    parent_wbs_code: null,
-    wbs_name: projectName
-  });
-
-  // Add milestones node
-  const milestonesId = "1.1";
-  allNodes.push({
-    wbs_code: milestonesId,
-    parent_wbs_code: projectId,
-    wbs_name: "M | Milestones"
-  });
-
-  // Add prerequisites node
-  const prerequisitesId = "1.2";
-  allNodes.push({
-    wbs_code: prerequisitesId,
-    parent_wbs_code: projectId,
-    wbs_name: "P | Pre-requisites"
-  });
-
-  // Add existing nodes if continuing project
-  if (projectState?.wbsNodes && projectState.wbsNodes.length > 0) {
-    const existingNodes = projectState.wbsNodes.filter(node => 
-      node.wbs_code !== "1" && 
-      node.wbs_code !== "1.1" && 
-      node.wbs_code !== "1.2" &&
-      !node.wbs_name.includes("TBC - Equipment To Be Confirmed")
-    );
-    
-    existingNodes.forEach(node => {
-      if (!allNodes.some(existing => existing.wbs_code === node.wbs_code)) {
-        allNodes.push({
-          ...node,
-          isExisting: true
-        });
-      }
-    });
-  }
-
-  // Enhanced processing
-  console.log('🏗️ ENHANCED: Generating new project WBS structure...');
-  
-  // CRITICAL: Get all equipment data for parent-child relationships
-  const allEquipmentData = data; // This is the complete equipment list
-  const commissionedEquipment = data.filter(item => item.commissioning === 'Y');
-  
-  console.log(`📊 Total commissioned equipment to process: ${commissionedEquipment.length}`);
-  
-  // Get unique subsystems from commissioned equipment
-  const rawSubsystems = [...new Set(commissionedEquipment.map(item => item.subsystem))];
-  
-  const subsystems = rawSubsystems.sort((a, b) => {
-    const aFormatted = formatSubsystemName(a);
-    const bFormatted = formatSubsystemName(b);
-    
-    const aIsSubstation = a.toLowerCase().includes('substation');
-    const bIsSubstation = b.toLowerCase().includes('substation');
-    
-    if (aIsSubstation && !bIsSubstation) return 1;
-    if (!aIsSubstation && bIsSubstation) return -1;
-    if (aIsSubstation && bIsSubstation) return 0;
-    
-    const aZMatch = aFormatted.match(/Z(\d+)/);
-    const bZMatch = bFormatted.match(/Z(\d+)/);
-    
-    if (aZMatch && bZMatch) {
-      const aZNum = parseInt(aZMatch[1]);
-      const bZNum = parseInt(bZMatch[1]);
-      return aZNum - bZNum;
-    }
-    
-    return aFormatted.localeCompare(bFormatted);
-  });
-  
-  console.log(`🏗️ Processing ${subsystems.length} subsystems`);
-  
-  // Process each subsystem
-  subsystems.forEach((subsystem, index) => {
-    console.log(`🏗️ Generating structure for subsystem: ${subsystem}`);
-    
-    const formattedSubsystemName = formatSubsystemName(subsystem);
-    const subsystemId = `1.${subsystemCounter}`;
-    const subsystemLabel = `S${existingSubsystemCount + index + 1} | ${formattedSubsystemName}`;
-    
-    // Add subsystem node
-    const subsystemNode = {
-      wbs_code: subsystemId,
-      parent_wbs_code: "1",
-      wbs_name: subsystemLabel,
-      ...(uploadMode === 'continue' && { isNew: true })
-    };
-    
-    allNodes.push(subsystemNode);
-    newNodes.push({
-      wbs_code: subsystemId,
-      parent_wbs_code: "1",
-      wbs_name: subsystemLabel
-    });
-
-    // Add prerequisite node
-    const prerequisiteId = `1.2.${existingSubsystemCount + index + 1}`;
-    const prerequisiteNode = {
-      wbs_code: prerequisiteId,
-      parent_wbs_code: "1.2",
-      wbs_name: formattedSubsystemName,
-      ...(uploadMode === 'continue' && { isNew: true })
-    };
-    
-    allNodes.push(prerequisiteNode);
-    newNodes.push({
-      wbs_code: prerequisiteId,
-      parent_wbs_code: "1.2",
-      wbs_name: formattedSubsystemName
-    });
-
-    // Get subsystem equipment
-    const subsystemEquipment = commissionedEquipment.filter(item => item.subsystem === subsystem);
-    console.log(`   📦 Found ${subsystemEquipment.length} commissioned equipment items`);
-
-    // FIXED: Generate modern structure with allEquipmentData for parent-child relationships
-    const subsystemStructure = [];
-    generateModernStructure(subsystemStructure, subsystemId, subsystem, data, allEquipmentData);
-    
-    // Add subsystem structure to nodes
-    subsystemStructure.forEach(node => {
-      allNodes.push({
-        ...node,
-        ...(uploadMode === 'continue' && { isNew: true })
-      });
-      newNodes.push(node);
-    });
-    
-    console.log(`   ✅ Processed ${subsystemEquipment.length} equipment items for ${subsystem}`);
-    subsystemCounter++;
-  });
-
-  // Process TBC equipment
-  const tbcEquipment = data.filter(item => item.commissioning === 'TBC');
-  if (tbcEquipment.length > 0) {
-    console.log(`⏳ Processing ${tbcEquipment.length} TBC equipment items`);
-    
-    const tbcId = `1.${subsystemCounter}`;
-    const tbcNode = {
-      wbs_code: tbcId,
-      parent_wbs_code: "1",
-      wbs_name: "TBC - Equipment To Be Confirmed",
-      ...(uploadMode === 'continue' && { isNew: true })
-    };
-    
-    allNodes.push(tbcNode);
-    newNodes.push({
-      wbs_code: tbcId,
-      parent_wbs_code: "1",
-      wbs_name: "TBC - Equipment To Be Confirmed"
-    });
-
-    tbcEquipment.forEach(item => {
-      const tbcItemNode = {
-        wbs_code: `${tbcId}.${tbcCounter}`,
-        parent_wbs_code: tbcId,
-        wbs_name: `${item.equipmentNumber} | ${item.description}`,
-        ...(uploadMode === 'continue' && { isNew: true })
-      };
-      
-      allNodes.push(tbcItemNode);
-      newNodes.push({
-        wbs_code: `${tbcId}.${tbcCounter}`,
-        parent_wbs_code: tbcId,
-        wbs_name: `${item.equipmentNumber} | ${item.description}`
-      });
-      tbcCounter++;
-    });
-  }
-
-  // Log completion summary
-  console.log('✅ ENHANCED WBS Generation Complete:');
-  console.log(`   - Total WBS nodes: ${allNodes.length}`);
-  console.log(`   - Subsystems: ${subsystems.length}`);
-  console.log(`   - Commissioned equipment processed: ${commissionedEquipment.length}`);
-  console.log(`   - Expected commissioned equipment: ${commissionedEquipment.length}`);
-  console.log(`   - Missing equipment: 0`);
-
-  // Return appropriate nodes based on upload mode
-  if (uploadMode === 'new') {
-    return {
-      wbsVisualization: allNodes,
-      wbsOutput: allNodes,
-      projectState: {
-        projectName,
-        lastWbsCode: subsystemCounter,
-        subsystems: [...(projectState?.subsystems || []), ...subsystems.map(formatSubsystemName)],
-        wbsNodes: allNodes,
-        timestamp: new Date().toISOString()
-      }
-    };
-  } else {
-    return {
-      wbsVisualization: allNodes,
-      wbsOutput: newNodes,
-      projectState: {
-        projectName,
-        lastWbsCode: subsystemCounter,
-        subsystems: [...(projectState?.subsystems || []), ...subsystems.map(formatSubsystemName)],
-        wbsNodes: allNodes,
-        timestamp: new Date().toISOString()
-      }
-    };
-  }
-};
-// Simple default export - placeholder component
-const WBSGenerator = () => {
   return (
-    <div>
-      <h1>WBS Generator</h1>
-      <p>Component loading...</p>
+    <ProjectContext.Provider value={{ projectState, setProjectState }}>
+      <WBSGenerator />
+    </ProjectContext.Provider>
+  );
+};
+
+const WBSGenerator = () => {
+  const { projectState, setProjectState } = useContext(ProjectContext);
+  const [uploadMode, setUploadMode] = useState('new');
+  const [equipmentData, setEquipmentData] = useState([]);
+  const [wbsOutput, setWbsOutput] = useState([]);
+  const [wbsVisualization, setWbsVisualization] = useState([]);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [projectName, setProjectName] = useState('Sample Project');
+  const [missingEquipmentConfig, setMissingEquipmentConfig] = useState({
+    existingWbsNodes: null,
+    existingProjectName: null
+  });
+  const [missingEquipmentAnalysis, setMissingEquipmentAnalysis] = useState({
+    newEquipment: [],
+    existingEquipment: [],
+    removedEquipment: []
+  });
+
+  const clearWBSData = () => {
+    setWbsOutput([]);
+    setWbsVisualization([]);
+    setEquipmentData([]);
+    setMissingEquipmentAnalysis({
+      newEquipment: [],
+      existingEquipment: [],
+      removedEquipment: []
+    });
+  };
+
+  const commonProps = {
+    projectState,
+    setProjectState,
+    equipmentData,
+    setEquipmentData,
+    wbsOutput,
+    setWbsOutput,
+    wbsVisualization,
+    setWbsVisualization,
+    isProcessing,
+    setIsProcessing,
+    projectName,
+    setProjectName,
+    missingEquipmentConfig,
+    setMissingEquipmentConfig,
+    missingEquipmentAnalysis,
+    setMissingEquipmentAnalysis,
+    clearWBSData
+  };
+
+  return (
+    <div className="space-y-6">
+      <WorkflowSelector 
+        uploadMode={uploadMode} 
+        setUploadMode={setUploadMode}
+        clearWBSData={clearWBSData}
+      />
+
+      {uploadMode === 'new' && (
+        <StartNewProject {...commonProps} />
+      )}
+
+      {uploadMode === 'continue' && (
+        <ContinueProject {...commonProps} />
+      )}
+
+      {uploadMode === 'missing' && (
+        <MissingEquipment {...commonProps} />
+      )}
+
+      {(wbsOutput.length > 0 || wbsVisualization.length > 0) && (
+        <div className="space-y-6">
+          <WBSTreeVisualization 
+            wbsNodes={wbsVisualization.length > 0 ? wbsVisualization : wbsOutput} 
+          />
+          
+          <ExportPanel 
+            wbsOutput={wbsOutput}
+            projectName={projectName}
+            uploadMode={uploadMode}
+            projectState={projectState}
+            equipmentData={equipmentData}
+            missingEquipmentAnalysis={missingEquipmentAnalysis}
+          />
+        </div>
+      )}
     </div>
   );
 };
 
-export default WBSGenerator;
+export { ProjectContext };
+export default WBSGeneratorApp;
