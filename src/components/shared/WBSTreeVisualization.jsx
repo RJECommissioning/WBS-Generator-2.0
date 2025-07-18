@@ -248,10 +248,7 @@ const WBSTreeVisualization = ({ wbsNodes = [] }) => {
               {node.wbs_code}
             </span>
             
-            {/* Level Indicator */}
-            <span className="text-xs text-gray-500 mr-2">
-              L{actualLevel}
-            </span>
+
             
             {/* Node Name */}
             <div className="flex-1 flex items-center">
