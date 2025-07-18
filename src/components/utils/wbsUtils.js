@@ -46,22 +46,35 @@ export const extractEquipmentNumbers = (wbsNodes) => {
     /^[A-Z]{2,}\d+$/ // Any 2+ letter prefix with numbers
   ];
   
-  // CRITICAL FIX: Create a map of parent-child relationships
-  const parentChildMap = new Map();
-  wbsNodes.forEach(node => {
+  // CRITICAL FIX: Create a recursive function to check if node is under TBC section
+  const isUnderTBCSection = (nodeCode) => {
+    const node = wbsNodes.find(n => n.wbs_code === nodeCode);
+    if (!node) return false;
+    
+    // Check if this node is the TBC section itself
+    if (node.wbs_name && node.wbs_name.includes('TBC - Equipment To Be Confirmed')) {
+      return true;
+    }
+    
+    // Check if parent is under TBC section
     if (node.parent_wbs_code) {
       const parent = wbsNodes.find(n => n.wbs_code === node.parent_wbs_code);
       if (parent) {
-        parentChildMap.set(node.wbs_code, parent.wbs_name);
+        if (parent.wbs_name && parent.wbs_name.includes('TBC - Equipment To Be Confirmed')) {
+          return true;
+        }
+        // Recursively check ancestors
+        return isUnderTBCSection(parent.wbs_code);
       }
     }
-  });
+    
+    return false;
+  };
   
   wbsNodes.forEach(node => {
     if (node.wbs_name) {
-      // CRITICAL FIX: Check if this node is under a TBC section
-      const parentName = parentChildMap.get(node.wbs_code);
-      const isTBCChild = parentName && parentName.includes('TBC - Equipment To Be Confirmed');
+      // CRITICAL FIX: Check if this node is under a TBC section (at any level)
+      const isTBCChild = isUnderTBCSection(node.wbs_code);
       
       // Handle TBC section parent node
       if (node.wbs_name.includes('TBC - Equipment To Be Confirmed')) {
@@ -70,7 +83,7 @@ export const extractEquipmentNumbers = (wbsNodes) => {
         return; // Skip the TBC parent node itself
       }
       
-      // Handle TBC child nodes (the actual equipment)
+      // Handle TBC child nodes (the actual equipment) - at ANY level
       if (isTBCChild && node.wbs_name.includes('|')) {
         const parts = node.wbs_name.split('|');
         if (parts.length >= 2) {
@@ -161,9 +174,7 @@ export const extractEquipmentNumbers = (wbsNodes) => {
   // CRITICAL: Log TBC equipment extraction
   const tbcEquipment = uniqueEquipment.filter(eq => 
     wbsNodes.some(node => {
-      const parentName = parentChildMap.get(node.wbs_code);
-      return parentName && parentName.includes('TBC - Equipment To Be Confirmed') && 
-             node.wbs_name.includes(eq);
+      return isUnderTBCSection(node.wbs_code) && node.wbs_name.includes(eq);
     })
   );
   
