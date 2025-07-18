@@ -1,4 +1,4 @@
-// src/components/utils/wbsUtils.js - Enhanced with debugging and improved equipment processing
+// src/components/utils/wbsUtils.js - Fixed equipment extraction logic
 
 export const categoryMapping = {
   '01': 'Preparations and set-up',
@@ -14,7 +14,7 @@ export const categoryMapping = {
   '99': 'Unrecognised Equipment'
 };
 
-// ENHANCED: Equipment extraction from WBS nodes with improved pattern matching
+// FIXED: Simplified and more accurate equipment extraction
 export const extractEquipmentNumbers = (wbsNodes) => {
   console.log('🔧 ENHANCED: Equipment Extraction Process');
   console.log('==========================================');
@@ -24,135 +24,58 @@ export const extractEquipmentNumbers = (wbsNodes) => {
   let processedCount = 0;
   let skippedCount = 0;
   
-  // Define WBS structure patterns that should be IGNORED
-  const ignorePatterns = [
+  // FIXED: Define patterns that should be IGNORED (structure elements)
+  const structurePatterns = [
     /^\d{2}\s*\|\s*/, // 01 | Preparations, 02 | Protection, etc.
     /^M\s*\|\s*/, // M | Milestones
     /^P\s*\|\s*/, // P | Pre-requisites
     /^S\d+\s*\|\s*/, // S1 | Subsystem, S2 | Subsystem, etc.
-    // REMOVED: /^TBC\s*-\s*/, // TBC - Equipment To Be Confirmed - NOW PROCESSED!
     /^Test bay$/, /^Panel Shop$/, /^Pad$/, /^Phase 1$/, /^Phase 2$/,
-    /^\d{4}.*/ // Project codes like 5737
+    /^\d{4}.*/, // Project codes like 5737
+    /^TBC\s*-\s*Equipment\s*To\s*Be\s*Confirmed$/ // TBC section header
   ];
-  
-  // ENHANCED: More comprehensive equipment patterns
-  const equipmentPatterns = [
-    /^[A-Z]+\d+/, // T11, HN10, etc.
-    /^[+-][A-Z]+\d+/, // +UH101, -F102, +WA10, etc.
-    /^[A-Z]+\d+-[A-Z0-9-]+/, // EG01-1000-01, etc.
-    /^[A-Z]+\d+\/[A-Z]/, // -F01/X, etc.
-    /^T\d+$/, // T10, T11, T20, T21, etc.
-    /^HN\d+$/, // HN10, HN20, etc.
-    /^[A-Z]{2,}\d+$/ // Any 2+ letter prefix with numbers
-  ];
-  
-  // CRITICAL FIX: Create a recursive function to check if node is under TBC section
-  const isUnderTBCSection = (nodeCode) => {
-    const node = wbsNodes.find(n => n.wbs_code === nodeCode);
-    if (!node) return false;
-    
-    // Check if this node is the TBC section itself
-    if (node.wbs_name && node.wbs_name.includes('TBC - Equipment To Be Confirmed')) {
-      return true;
-    }
-    
-    // Check if parent is under TBC section
-    if (node.parent_wbs_code) {
-      const parent = wbsNodes.find(n => n.wbs_code === node.parent_wbs_code);
-      if (parent) {
-        if (parent.wbs_name && parent.wbs_name.includes('TBC - Equipment To Be Confirmed')) {
-          return true;
-        }
-        // Recursively check ancestors
-        return isUnderTBCSection(parent.wbs_code);
-      }
-    }
-    
-    return false;
-  };
   
   wbsNodes.forEach(node => {
-    if (node.wbs_name) {
-      // CRITICAL FIX: Check if this node is under a TBC section (at any level)
-      const isTBCChild = isUnderTBCSection(node.wbs_code);
-      
-      // Handle TBC section parent node
-      if (node.wbs_name.includes('TBC - Equipment To Be Confirmed')) {
-        console.log(`   🔧 Found TBC section: "${node.wbs_name}"`);
-        skippedCount++;
-        return; // Skip the TBC parent node itself
+    if (!node.wbs_name || !node.wbs_name.includes('|')) {
+      // Skip nodes without pipe separator or no name
+      return;
+    }
+    
+    const parts = node.wbs_name.split('|');
+    if (parts.length < 2) return;
+    
+    const firstPart = parts[0].trim();
+    const secondPart = parts[1].trim();
+    
+    // FIXED: Check if this is a structure element that should be ignored
+    const isStructureElement = structurePatterns.some(pattern => 
+      pattern.test(firstPart) || pattern.test(node.wbs_name)
+    );
+    
+    if (isStructureElement) {
+      skippedCount++;
+      if (skippedCount <= 5) {
+        console.log(`   🚫 Ignored WBS structure: "${node.wbs_name}"`);
       }
+      return;
+    }
+    
+    // FIXED: Extract equipment number from the first part (before |)
+    // This should match exactly how equipment was added during WBS generation
+    const equipmentNumber = firstPart.trim();
+    
+    // FIXED: Validate that this looks like an equipment number
+    if (isValidEquipmentNumber(equipmentNumber)) {
+      equipmentNumbers.push(equipmentNumber);
+      processedCount++;
       
-      // Handle TBC child nodes (the actual equipment) - at ANY level
-      if (isTBCChild && node.wbs_name.includes('|')) {
-        const parts = node.wbs_name.split('|');
-        if (parts.length >= 2) {
-          const firstPart = parts[0].trim();
-          
-          // Extract equipment from TBC section
-          if (equipmentPatterns.some(pattern => pattern.test(firstPart))) {
-            equipmentNumbers.push(firstPart);
-            processedCount++;
-            console.log(`   ✅ Extracted TBC equipment: "${firstPart}" from "${node.wbs_name}"`);
-            return;
-          }
-        }
+      if (processedCount <= 15) {
+        console.log(`   ✅ Extracted equipment: "${equipmentNumber}" from "${node.wbs_name}"`);
       }
-      
-      // Handle normal equipment nodes (non-TBC)
-      if (node.wbs_name.includes('|')) {
-        const parts = node.wbs_name.split('|');
-        if (parts.length >= 2) {
-          const firstPart = parts[0].trim();
-          const secondPart = parts[1].trim();
-          
-          // Build subsystem mapping for later use
-          if (firstPart.startsWith('S') && firstPart.includes(' ')) {
-            existingSubsystems.set(secondPart, node.wbs_code);
-          }
-          
-          // Check if this is a WBS structure element that should be ignored
-          const shouldIgnore = ignorePatterns.some(pattern => 
-            pattern.test(firstPart) || pattern.test(node.wbs_name)
-          );
-          
-          if (shouldIgnore) {
-            skippedCount++;
-            if (skippedCount <= 5) {
-              console.log(`   🚫 Ignored WBS structure: "${node.wbs_name}"`);
-            }
-            return;
-          }
-          
-          // ENHANCED: Check both parts for equipment patterns
-          let equipmentFound = false;
-          
-          // Check first part
-          if (equipmentPatterns.some(pattern => pattern.test(firstPart))) {
-            equipmentNumbers.push(firstPart);
-            processedCount++;
-            equipmentFound = true;
-            if (processedCount <= 15) {
-              console.log(`   ✅ Extracted equipment: "${firstPart}" from "${node.wbs_name}"`);
-            }
-          }
-          
-          // Check second part if first part wasn't equipment
-          if (!equipmentFound && equipmentPatterns.some(pattern => pattern.test(secondPart))) {
-            equipmentNumbers.push(secondPart);
-            processedCount++;
-            if (processedCount <= 15) {
-              console.log(`   ✅ Extracted equipment: "${secondPart}" from "${node.wbs_name}"`);
-            }
-          }
-          
-          if (!equipmentFound) {
-            skippedCount++;
-            if (skippedCount <= 10) {
-              console.log(`   🚫 Skipped: "${node.wbs_name}" (no equipment pattern)`);
-            }
-          }
-        }
+    } else {
+      skippedCount++;
+      if (skippedCount <= 10) {
+        console.log(`   🚫 Skipped: "${node.wbs_name}" (not valid equipment)`);
       }
     }
   });
@@ -167,23 +90,314 @@ export const extractEquipmentNumbers = (wbsNodes) => {
   console.log(`   Subsystems found: ${existingSubsystems.size}`);
   
   // CRITICAL: Log specific equipment we're looking for
-  console.log(`\n🔍 CRITICAL: Checking for T11 and T21:`);
+  console.log(`\n🔍 CRITICAL: Checking for key equipment:`);
   console.log(`   T11 found: ${uniqueEquipment.includes('T11') ? '✅ YES' : '❌ NO'}`);
   console.log(`   T21 found: ${uniqueEquipment.includes('T21') ? '✅ YES' : '❌ NO'}`);
+  console.log(`   +WC02 found: ${uniqueEquipment.includes('+WC02') ? '✅ YES' : '❌ NO'}`);
   
-  // CRITICAL: Log TBC equipment extraction
-  const tbcEquipment = uniqueEquipment.filter(eq => 
-    wbsNodes.some(node => {
-      return isUnderTBCSection(node.wbs_code) && node.wbs_name.includes(eq);
-    })
-  );
-  
-  console.log(`\n⏳ TBC Equipment extracted: ${tbcEquipment.length}`);
-  if (tbcEquipment.length > 0) {
-    console.log(`   TBC equipment found: ${tbcEquipment.slice(0, 10).join(', ')}`);
-  }
+  // Log sample of extracted equipment
+  console.log(`\n📋 Sample extracted equipment:`);
+  uniqueEquipment.slice(0, 20).forEach(eq => console.log(`   - ${eq}`));
   
   return { equipmentNumbers: uniqueEquipment, existingSubsystems };
+};
+
+// FIXED: Improved equipment number validation
+export const isValidEquipmentNumber = (equipmentNumber) => {
+  if (!equipmentNumber || typeof equipmentNumber !== 'string') return false;
+  
+  const trimmed = equipmentNumber.trim();
+  if (trimmed.length < 2) return false;
+  
+  // FIXED: More comprehensive invalid patterns
+  const invalidPatterns = [
+    'EXAMPLE', 'Lot ', 'COMBI-', 'FREE ISSUE', 'Wall Internal', 
+    '(Copy)', 'Test bay', 'Panel Shop', 'Pad', 'Phase 1', 'Phase 2',
+    'Preparations and set-up', 'Protection Panels', 'HV Switchboards',
+    'LV Switchboards', 'Transformers', 'Battery Systems', 'Earthing',
+    'Building Services', 'Interface Testing', 'Ancillary Systems',
+    'Unrecognised Equipment', 'Milestones', 'Pre-requisites',
+    'Equipment To Be Confirmed', 'TBC -'
+  ];
+  
+  // Check for invalid patterns
+  const hasInvalidPattern = invalidPatterns.some(pattern => 
+    trimmed.includes(pattern)
+  );
+  
+  if (hasInvalidPattern) return false;
+  
+  // FIXED: Valid equipment patterns - must match at least one
+  const validPatterns = [
+    /^[A-Z]+\d+$/,           // T11, HN10, etc.
+    /^[+-][A-Z]+\d+$/,       // +UH101, -F102, +WA10, etc.
+    /^[A-Z]+\d+[-/][A-Z0-9-]+/, // EG01-1000-01, -F01/X, etc.
+    /^[A-Z]+\d+\.\d+$/,      // SK01.1, SK02.2, etc.
+    /^[A-Z]{2,}\d+$/         // Any 2+ letter prefix with numbers
+  ];
+  
+  return validPatterns.some(pattern => pattern.test(trimmed));
+};
+
+// FIXED: Improved equipment comparison with better debugging
+export const compareEquipmentLists = (existingEquipment, newEquipmentList) => {
+  console.log("🔍 ENHANCED Equipment Comparison Analysis");
+  console.log("==========================================");
+  
+  // FIXED: Normalize equipment numbers for comparison
+  const normalizeEquipmentNumber = (equipNum) => {
+    return equipNum ? equipNum.trim().toUpperCase() : '';
+  };
+  
+  // Create normalized sets
+  const existingSet = new Set(existingEquipment.map(normalizeEquipmentNumber));
+  const newEquipmentMap = new Map();
+  
+  // FIXED: Filter and normalize new equipment
+  const validNewEquipment = newEquipmentList.filter(item => {
+    const isValid = item.equipmentNumber && 
+                   isValidEquipmentNumber(item.equipmentNumber) &&
+                   (item.commissioning === 'Y' || item.commissioning === 'TBC');
+    
+    if (isValid) {
+      const normalized = normalizeEquipmentNumber(item.equipmentNumber);
+      newEquipmentMap.set(normalized, item);
+    }
+    
+    return isValid;
+  });
+  
+  const newSet = new Set(Array.from(newEquipmentMap.keys()));
+  
+  console.log(`📋 Existing equipment count: ${existingEquipment.length}`);
+  console.log(`📦 New equipment list count: ${newEquipmentList.length}`);
+  console.log(`✅ Valid new equipment count: ${validNewEquipment.length}`);
+  console.log(`🔢 Unique new equipment numbers: ${newSet.size}`);
+  
+  // FIXED: Enhanced debugging for specific equipment
+  console.log("\n🔍 Key equipment check:");
+  const keyEquipment = ['T11', 'T21', '+WC02', 'HN10', 'HN20'];
+  keyEquipment.forEach(eq => {
+    const normalizedEq = normalizeEquipmentNumber(eq);
+    console.log(`   ${eq}: Existing=${existingSet.has(normalizedEq)}, New=${newSet.has(normalizedEq)}`);
+  });
+  
+  // Find differences
+  const newEquipment = validNewEquipment.filter(item => {
+    const normalized = normalizeEquipmentNumber(item.equipmentNumber);
+    return !existingSet.has(normalized);
+  });
+  
+  const existingEquipmentInNew = validNewEquipment.filter(item => {
+    const normalized = normalizeEquipmentNumber(item.equipmentNumber);
+    return existingSet.has(normalized);
+  });
+  
+  const removedEquipment = existingEquipment.filter(equipNum => {
+    const normalized = normalizeEquipmentNumber(equipNum);
+    return !newSet.has(normalized);
+  });
+  
+  console.log(`\n📊 Results:`);
+  console.log(`🆕 New equipment found: ${newEquipment.length}`);
+  console.log(`✅ Existing equipment in new list: ${existingEquipmentInNew.length}`);
+  console.log(`❌ Removed equipment: ${removedEquipment.length}`);
+  
+  if (removedEquipment.length > 0) {
+    console.log(`\n❌ Removed equipment details:`);
+    removedEquipment.forEach(eq => console.log(`   - ${eq}`));
+  }
+  
+  if (newEquipment.length > 0) {
+    console.log(`\n🔍 First 10 new equipment items:`);
+    newEquipment.slice(0, 10).forEach(item => {
+      console.log(`   ${item.equipmentNumber} - ${item.description} (${item.commissioning})`);
+    });
+  }
+  
+  return {
+    newEquipment,
+    existingEquipment: existingEquipmentInNew,
+    removedEquipment
+  };
+};
+
+// FIXED: Enhanced missing equipment WBS generation
+export const generateMissingEquipmentWBS = (newEquipmentList, existingWbsNodes, existingProjectName) => {
+  console.log("🔧 ENHANCED: Missing Equipment WBS Generation Started");
+  console.log("=================================================");
+  console.log(`📦 New equipment list received: ${newEquipmentList.length} items`);
+  
+  if (!existingWbsNodes || existingWbsNodes.length === 0) {
+    console.log("❌ No existing WBS structure provided");
+    throw new Error('No existing WBS structure provided');
+  }
+
+  console.log(`🏗️ Existing WBS nodes: ${existingWbsNodes.length} nodes`);
+
+  // STEP 1: Extract existing equipment with improved logic
+  const { equipmentNumbers: existingEquipmentNumbers, existingSubsystems } = extractEquipmentNumbers(existingWbsNodes);
+  
+  console.log(`🔢 Extracted equipment numbers from WBS: ${existingEquipmentNumbers.length}`);
+  console.log(`📍 Found existing subsystems: ${existingSubsystems.size}`);
+  
+  // STEP 2: Compare equipment lists with improved logic
+  const analysis = compareEquipmentLists(existingEquipmentNumbers, newEquipmentList);
+  
+  console.log(`\n🎯 FINAL ANALYSIS:`);
+  console.log(`   - Existing equipment: ${existingEquipmentNumbers.length}`);
+  console.log(`   - New equipment: ${analysis.newEquipment.length}`);
+  console.log(`   - Removed equipment: ${analysis.removedEquipment.length}`);
+  
+  // STEP 3: Handle the case where no missing equipment is found
+  if (analysis.newEquipment.length === 0 && analysis.removedEquipment.length === 0) {
+    console.log("✅ SUCCESS: No missing equipment found - equipment lists match perfectly");
+    return {
+      allNodes: existingWbsNodes.map(node => ({ ...node, isExisting: true })),
+      newNodes: [],
+      analysis: {
+        newEquipment: [],
+        existingEquipment: analysis.existingEquipment,
+        removedEquipment: []
+      },
+      projectName: existingProjectName
+    };
+  }
+  
+  if (analysis.newEquipment.length === 0) {
+    console.log("✅ SUCCESS: No new equipment found - all equipment exists in WBS structure");
+    return {
+      allNodes: existingWbsNodes.map(node => ({ ...node, isExisting: true })),
+      newNodes: [],
+      analysis,
+      projectName: existingProjectName
+    };
+  }
+
+  // STEP 4: Process missing equipment (if any)
+  console.log("🏗️ Building new WBS nodes for missing equipment...");
+  
+  const allNodes = [];
+  const newNodes = [];
+  
+  // Add all existing nodes to visualization
+  existingWbsNodes.forEach(node => {
+    allNodes.push({
+      ...node,
+      isExisting: true
+    });
+  });
+  
+  // Process missing equipment by commissioning status
+  const missingCommissioned = analysis.newEquipment.filter(item => item.commissioning === 'Y');
+  const missingTBC = analysis.newEquipment.filter(item => item.commissioning === 'TBC');
+  
+  console.log(`✅ Missing commissioned equipment: ${missingCommissioned.length}`);
+  console.log(`⏳ Missing TBC equipment: ${missingTBC.length}`);
+  
+  // Add missing equipment to appropriate subsystems
+  let newNodeCounter = Math.max(...allNodes.map(n => {
+    const parts = n.wbs_code.split('.');
+    return parseInt(parts[parts.length - 1]) || 0;
+  })) + 1;
+  
+  // Process missing commissioned equipment
+  missingCommissioned.forEach(item => {
+    // Find subsystem match
+    let subsystemWbsCode = null;
+    for (const [subsystemName, wbsCode] of existingSubsystems) {
+      if (subsystemName.includes(item.subsystem) || item.subsystem.includes(subsystemName)) {
+        subsystemWbsCode = wbsCode;
+        break;
+      }
+    }
+    
+    if (subsystemWbsCode) {
+      // Determine category for this equipment
+      const category = determineCategoryCode(item, analysis.newEquipment);
+      
+      // Find or create the appropriate category within subsystem
+      let targetCategory = allNodes.find(n => 
+        n.parent_wbs_code === subsystemWbsCode && 
+        n.wbs_name.includes(`${category} |`)
+      );
+      
+      if (!targetCategory) {
+        // Create category if it doesn't exist
+        const categoryId = `${subsystemWbsCode}.${newNodeCounter++}`;
+        const categoryName = categoryMapping[category] || 'Unknown Category';
+        targetCategory = {
+          wbs_code: categoryId,
+          parent_wbs_code: subsystemWbsCode,
+          wbs_name: `${category} | ${categoryName}`,
+          isNew: true
+        };
+        allNodes.push(targetCategory);
+        newNodes.push(targetCategory);
+      }
+      
+      // Add equipment to category
+      const equipmentId = `${targetCategory.wbs_code}.${newNodeCounter++}`;
+      const equipmentNode = {
+        wbs_code: equipmentId,
+        parent_wbs_code: targetCategory.wbs_code,
+        wbs_name: `${item.equipmentNumber} | ${item.description}`,
+        isNew: true
+      };
+      
+      allNodes.push(equipmentNode);
+      newNodes.push(equipmentNode);
+    }
+  });
+  
+  // Handle new TBC equipment
+  if (missingTBC.length > 0) {
+    console.log(`⏳ Processing ${missingTBC.length} TBC equipment items`);
+    
+    let tbcNode = allNodes.find(node => 
+      node.wbs_name.includes('TBC - Equipment To Be Confirmed')
+    );
+    
+    if (!tbcNode) {
+      const projectNode = allNodes.find(node => node.parent_wbs_code === null);
+      const nextSubsystemCode = findNextWBSCode(projectNode.wbs_code, allNodes);
+      
+      tbcNode = {
+        wbs_code: nextSubsystemCode,
+        parent_wbs_code: projectNode.wbs_code,
+        wbs_name: "TBC - Equipment To Be Confirmed",
+        isNew: true
+      };
+      
+      allNodes.push(tbcNode);
+      newNodes.push(tbcNode);
+    }
+    
+    missingTBC.forEach(item => {
+      const tbcItemCode = findNextWBSCode(tbcNode.wbs_code, allNodes);
+      const tbcItemNode = {
+        wbs_code: tbcItemCode,
+        parent_wbs_code: tbcNode.wbs_code,
+        wbs_name: `${item.equipmentNumber} | ${item.description}`,
+        isNew: true
+      };
+      
+      allNodes.push(tbcItemNode);
+      newNodes.push(tbcItemNode);
+    });
+  }
+  
+  console.log(`\n🎯 Final results:`);
+  console.log(`   New WBS nodes created: ${newNodes.length}`);
+  console.log(`   Complete visualization nodes: ${allNodes.length}`);
+  console.log("✅ Missing equipment WBS generation complete");
+  
+  return {
+    allNodes,
+    newNodes,
+    analysis,
+    projectName: existingProjectName
+  };
 };
 
 // ENHANCED: Equipment categorization with proper whitespace handling and TBC support
@@ -399,21 +613,6 @@ export const generateModernStructure = (nodes, subsystemId, subsystem, data) => 
   if (t11InSubsystem || t21InSubsystem) {
     console.log(`\n🎯 CRITICAL: Processing subsystem "${subsystem}" - Contains T11/T21`);
     console.log(`📊 Total equipment in subsystem: ${allSubsystemEquipment.length}`);
-    
-    if (t11InSubsystem) {
-      console.log(`📍 T11 Details:`);
-      console.log(`   Equipment Number: "${t11InSubsystem.equipmentNumber}"`);
-      console.log(`   Parent Equipment Number: "${t11InSubsystem.parentEquipmentNumber}"`);
-      console.log(`   Commissioning: "${t11InSubsystem.commissioning}"`);
-      console.log(`   Description: "${t11InSubsystem.description}"`);
-    }
-    if (t21InSubsystem) {
-      console.log(`📍 T21 Details:`);
-      console.log(`   Equipment Number: "${t21InSubsystem.equipmentNumber}"`);
-      console.log(`   Parent Equipment Number: "${t21InSubsystem.parentEquipmentNumber}"`);
-      console.log(`   Commissioning: "${t21InSubsystem.commissioning}"`);
-      console.log(`   Description: "${t21InSubsystem.description}"`);
-    }
   }
   
   orderedCategoryKeys.forEach(number => {
@@ -427,138 +626,28 @@ export const generateModernStructure = (nodes, subsystemId, subsystem, data) => 
       wbs_name: `${number} | ${name}`
     });
 
-    // SUPER ENHANCED DEBUG FOR CATEGORY 05 (TRANSFORMERS)
-    if (number === '05' && (t11InSubsystem || t21InSubsystem)) {
-      console.log(`\n🔧 SUPER DEBUG: Category 05 (Transformers) Processing`);
-      console.log(`========================================================`);
-      
-      // Step 1: Get all subsystem equipment with commissioning Y
-      const subsystemEquipment = data.filter(item => 
-        item.subsystem === subsystem && 
-        item.commissioning === 'Y'
-      );
-      
-      console.log(`📦 Subsystem commissioned equipment: ${subsystemEquipment.length} items`);
-      
-      // Step 2: Find all transformer equipment in subsystem
-      const transformerEquipment = subsystemEquipment.filter(item => 
-        item.equipmentNumber && item.equipmentNumber.trim().match(/^T\d+$/)
-      );
-      
-      console.log(`🔌 Transformer equipment in subsystem:`);
-      transformerEquipment.forEach(item => {
-        console.log(`   - ${item.equipmentNumber} (Parent: "${item.parentEquipmentNumber}") - ${item.description}`);
-      });
-      
-      // Step 3: Categorize each transformer
-      console.log(`\n🏷️ Categorizing transformers:`);
-      transformerEquipment.forEach(item => {
-        const category = determineCategoryCode(item, data);
-        console.log(`   ${item.equipmentNumber} → Category: ${category}`);
-      });
-      
-      // Step 4: Filter for category 05 specifically
-      const categoryEquipment = subsystemEquipment.filter(item => {
-        const category = determineCategoryCode(item, data);
-        return category === number;
-      });
-      
-      console.log(`\n📋 Equipment in category 05: ${categoryEquipment.length} items`);
-      const transformersInCategory = categoryEquipment.filter(item => 
-        item.equipmentNumber && item.equipmentNumber.trim().match(/^T\d+$/)
-      );
-      
-      console.log(`🔌 Transformers in category 05:`);
-      transformersInCategory.forEach(item => {
-        console.log(`   - ${item.equipmentNumber} (Parent: "${item.parentEquipmentNumber}")`);
-      });
-      
-      // Step 5: CRITICAL - Parent-child filtering logic
-      console.log(`\n👨‍👦 Parent-Child Filtering Analysis:`);
-      console.log(`====================================`);
-      
+    // Get equipment for this category
+    const subsystemEquipment = data.filter(item => 
+      item.subsystem === subsystem && 
+      item.commissioning === 'Y'
+    );
+
+    const categoryEquipment = subsystemEquipment.filter(item => {
+      const category = determineCategoryCode(item, data);
+      return category === number;
+    });
+    
+    if (categoryEquipment.length > 0) {
       const parentEquipment = categoryEquipment.filter(item => {
-        // Check if this item's parent exists in the SAME category
         const hasParentInCategory = categoryEquipment.some(potentialParent => 
           potentialParent.equipmentNumber?.trim() === item.parentEquipmentNumber?.trim()
         );
-        
-        const isParent = !hasParentInCategory;
-        
-        console.log(`🔍 ${item.equipmentNumber}:`);
-        console.log(`   Parent Equipment Number: "${item.parentEquipmentNumber}"`);
-        console.log(`   Has parent in same category: ${hasParentInCategory}`);
-        console.log(`   Will be processed as parent: ${isParent}`);
-        
-        // CRITICAL: If this is T11 or T21, show detailed analysis
-        if (item.equipmentNumber?.trim() === 'T11' || item.equipmentNumber?.trim() === 'T21') {
-          console.log(`   🚨 CRITICAL: ${item.equipmentNumber} parent analysis:`);
-          
-          if (item.parentEquipmentNumber?.trim()) {
-            // Check if parent exists in data at all
-            const parentExistsInData = data.some(d => 
-              d.equipmentNumber?.trim() === item.parentEquipmentNumber?.trim()
-            );
-            console.log(`   Parent "${item.parentEquipmentNumber}" exists in data: ${parentExistsInData}`);
-            
-            // Check if parent is in same subsystem
-            const parentInSameSubsystem = data.some(d => 
-              d.equipmentNumber?.trim() === item.parentEquipmentNumber?.trim() &&
-              d.subsystem === subsystem
-            );
-            console.log(`   Parent in same subsystem: ${parentInSameSubsystem}`);
-            
-            // Check if parent is commissioned
-            const parentCommissioned = data.some(d => 
-              d.equipmentNumber?.trim() === item.parentEquipmentNumber?.trim() &&
-              d.commissioning === 'Y'
-            );
-            console.log(`   Parent is commissioned: ${parentCommissioned}`);
-            
-            // Check if parent would be in category 05
-            if (parentExistsInData) {
-              const parentItem = data.find(d => 
-                d.equipmentNumber?.trim() === item.parentEquipmentNumber?.trim()
-              );
-              if (parentItem) {
-                const parentCategory = determineCategoryCode(parentItem, data);
-                console.log(`   Parent would be in category: ${parentCategory}`);
-                console.log(`   Parent in same category (05): ${parentCategory === '05'}`);
-              }
-            }
-          } else {
-            console.log(`   🚨 ${item.equipmentNumber} has NO parent - should be treated as parent equipment`);
-          }
-        }
-        
-        return isParent;
+        return !hasParentInCategory;
       });
-      
-      console.log(`\n👨‍👦 Final parent equipment list: ${parentEquipment.length} items`);
-      console.log(`🔌 Parent transformers that will be added to WBS:`);
-      const parentTransformers = parentEquipment.filter(item => 
-        item.equipmentNumber && item.equipmentNumber.trim().match(/^T\d+$/)
-      );
-      
-      parentTransformers.forEach(item => {
-        console.log(`   ✅ ${item.equipmentNumber} - ${item.description}`);
-      });
-      
-      const hasT11AsParent = parentTransformers.some(t => t.equipmentNumber?.trim() === 'T11');
-      const hasT21AsParent = parentTransformers.some(t => t.equipmentNumber?.trim() === 'T21');
-      
-      console.log(`\n🎯 FINAL VERDICT:`);
-      console.log(`   T11 will be added to WBS: ${hasT11AsParent ? '✅ YES' : '❌ NO'}`);
-      console.log(`   T21 will be added to WBS: ${hasT21AsParent ? '✅ YES' : '❌ NO'}`);
-      
-      // Process parent equipment and add to WBS
+
       let equipmentCounter = 1;
       parentEquipment.forEach(item => {
         const equipmentId = `${categoryId}.${equipmentCounter}`;
-        
-        if (item.equipmentNumber?.trim() === 'T11' || item.equipmentNumber?.trim() === 'T21') {
-          console.log(`🎉 SUCCESS: Adding ${item.equipmentNumber} to WBS with code ${equipmentId}`);
-        }
         
         nodes.push({
           wbs_code: equipmentId,
@@ -566,23 +655,15 @@ export const generateModernStructure = (nodes, subsystemId, subsystem, data) => 
           wbs_name: `${item.equipmentNumber} | ${item.description}`
         });
 
-        // Add children recursively
         const addChildrenRecursively = (parentEquipmentNumber, parentWbsCode) => {
           const childEquipment = data.filter(child => 
             child.parentEquipmentNumber?.trim() === parentEquipmentNumber?.trim() && 
             child.commissioning === 'Y'
           );
           
-          if (childEquipment.length > 0) {
-            console.log(`👶 Adding ${childEquipment.length} children for parent ${parentEquipmentNumber}`);
-          }
-          
           let childCounter = 1;
           childEquipment.forEach(child => {
             const childId = `${parentWbsCode}.${childCounter}`;
-            
-            console.log(`👶 Adding child: ${child.equipmentNumber} (${childId})`);
-            
             nodes.push({
               wbs_code: childId,
               parent_wbs_code: parentWbsCode,
@@ -597,61 +678,6 @@ export const generateModernStructure = (nodes, subsystemId, subsystem, data) => 
         addChildrenRecursively(item.equipmentNumber, equipmentId);
         equipmentCounter++;
       });
-      
-    } else {
-      // Standard processing for non-transformer categories or subsystems without T11/T21
-      const subsystemEquipment = data.filter(item => 
-        item.subsystem === subsystem && 
-        item.commissioning === 'Y'
-      );
-
-      const categoryEquipment = subsystemEquipment.filter(item => {
-        const category = determineCategoryCode(item, data);
-        return category === number;
-      });
-      
-      if (categoryEquipment.length > 0) {
-        const parentEquipment = categoryEquipment.filter(item => {
-          const hasParentInCategory = categoryEquipment.some(potentialParent => 
-            potentialParent.equipmentNumber?.trim() === item.parentEquipmentNumber?.trim()
-          );
-          return !hasParentInCategory;
-        });
-
-        let equipmentCounter = 1;
-        parentEquipment.forEach(item => {
-          const equipmentId = `${categoryId}.${equipmentCounter}`;
-          
-          nodes.push({
-            wbs_code: equipmentId,
-            parent_wbs_code: categoryId,
-            wbs_name: `${item.equipmentNumber} | ${item.description}`
-          });
-
-          const addChildrenRecursively = (parentEquipmentNumber, parentWbsCode) => {
-            const childEquipment = data.filter(child => 
-              child.parentEquipmentNumber?.trim() === parentEquipmentNumber?.trim() && 
-              child.commissioning === 'Y'
-            );
-            
-            let childCounter = 1;
-            childEquipment.forEach(child => {
-              const childId = `${parentWbsCode}.${childCounter}`;
-              nodes.push({
-                wbs_code: childId,
-                parent_wbs_code: parentWbsCode,
-                wbs_name: `${child.equipmentNumber} | ${child.description}`
-              });
-              
-              addChildrenRecursively(child.equipmentNumber, childId);
-              childCounter++;
-            });
-          };
-
-          addChildrenRecursively(item.equipmentNumber, equipmentId);
-          equipmentCounter++;
-        });
-      }
     }
 
     // Add preparation items for category 01
@@ -682,299 +708,6 @@ export const generateModernStructure = (nodes, subsystemId, subsystem, data) => 
 
     categoryCounter++;
   });
-};
-
-// Helper function to validate equipment numbers
-export const isValidEquipmentNumber = (equipmentNumber) => {
-  if (!equipmentNumber || equipmentNumber.trim().length < 2) return false;
-  
-  // Exclude invalid patterns
-  const invalidPatterns = [
-    'EXAMPLE', 'Lot ', 'COMBI-', 'FREE ISSUE', 'Wall Internal', 
-    '(Copy)', 'Test bay', 'Panel Shop', 'Pad', 'Phase 1', 'Phase 2',
-    'Preparations and set-up', 'Protection Panels', 'HV Switchboards',
-    'LV Switchboards', 'Transformers', 'Battery Systems', 'Earthing',
-    'Building Services', 'Interface Testing', 'Ancillary Systems',
-    'Unrecognised Equipment', 'Milestones', 'Pre-requisites'
-  ];
-  
-  return !invalidPatterns.some(pattern => equipmentNumber.includes(pattern));
-};
-
-// Compare equipment lists for missing equipment functionality
-export const compareEquipmentLists = (existingEquipment, newEquipmentList) => {
-  const existingSet = new Set(existingEquipment);
-  const newSet = new Set(newEquipmentList.map(item => item.equipmentNumber));
-  
-  console.log("🔍 ENHANCED Equipment Comparison Analysis");
-  console.log("==========================================");
-  console.log(`📋 Existing equipment count: ${existingEquipment.length}`);
-  console.log(`📦 New equipment list count: ${newEquipmentList.length}`);
-  console.log(`🔢 Unique new equipment numbers: ${newSet.size}`);
-  
-  // Enhanced debugging
-  console.log("\n🔍 Sample existing equipment:");
-  existingEquipment.slice(0, 10).forEach(num => console.log(`   ${num}`));
-  
-  console.log("\n📦 Sample new equipment:");
-  newEquipmentList.slice(0, 10).forEach(item => console.log(`   ${item.equipmentNumber} (${item.commissioning})`));
-  
-  const newEquipment = newEquipmentList.filter(item => !existingSet.has(item.equipmentNumber));
-  const existingEquipmentInNew = newEquipmentList.filter(item => existingSet.has(item.equipmentNumber));
-  const removedEquipment = existingEquipment.filter(equipNum => !newSet.has(equipNum));
-  
-  console.log(`\n📊 Results:`);
-  console.log(`🆕 New equipment found: ${newEquipment.length}`);
-  console.log(`✅ Existing equipment in new list: ${existingEquipmentInNew.length}`);
-  console.log(`❌ Removed equipment: ${removedEquipment.length}`);
-  
-  if (newEquipment.length > 0) {
-    console.log(`\n🔍 First 10 'new' equipment items:`);
-    newEquipment.slice(0, 10).forEach(item => {
-      console.log(`   ${item.equipmentNumber} - ${item.description} (${item.commissioning})`);
-    });
-  }
-  
-  return {
-    newEquipment,
-    existingEquipment: existingEquipmentInNew,
-    removedEquipment
-  };
-};
-
-// ENHANCED: Missing Equipment WBS Generation function
-export const generateMissingEquipmentWBS = (newEquipmentList, existingWbsNodes, existingProjectName) => {
-  console.log("🔧 ENHANCED: Missing Equipment WBS Generation Started");
-  console.log("=================================================");
-  console.log(`📦 New equipment list received: ${newEquipmentList.length} items`);
-  
-  if (!existingWbsNodes || existingWbsNodes.length === 0) {
-    console.log("❌ No existing WBS structure provided");
-    throw new Error('No existing WBS structure provided');
-  }
-
-  console.log(`🏗️ Existing WBS nodes: ${existingWbsNodes.length} nodes`);
-
-  // STEP 1: CRITICAL - Filter by commissioning status FIRST
-  const commissionedEquipment = newEquipmentList.filter(item => {
-    const isCommissioned = item.commissioning === 'Y' || item.commissioning === 'TBC';
-    const hasValidEquipmentNumber = isValidEquipmentNumber(item.equipmentNumber);
-    
-    if (!isCommissioned) {
-      console.log(`🚫 Excluded (N): ${item.equipmentNumber} - ${item.description}`);
-      return false;
-    }
-    
-    if (!hasValidEquipmentNumber) {
-      console.log(`🚫 Invalid equipment number: ${item.equipmentNumber}`);
-      return false;
-    }
-    
-    return true;
-  });
-  
-  console.log(`✅ After commissioning filter: ${commissionedEquipment.length} items (from ${newEquipmentList.length} total)`);
-  console.log(`   - Commissioned (Y): ${commissionedEquipment.filter(item => item.commissioning === 'Y').length}`);
-  console.log(`   - TBC: ${commissionedEquipment.filter(item => item.commissioning === 'TBC').length}`);
-
-  // STEP 2: Extract existing equipment from WBS structure
-  const { equipmentNumbers: existingEquipmentNumbers, existingSubsystems } = extractEquipmentNumbers(existingWbsNodes);
-  
-  console.log(`🔢 Extracted equipment numbers from WBS: ${existingEquipmentNumbers.length}`);
-  console.log(`📍 Found existing subsystems: ${existingSubsystems.size}`);
-  
-  // STEP 3: Find genuinely missing equipment
-  const existingEquipmentSet = new Set(existingEquipmentNumbers);
-  const missingEquipment = commissionedEquipment.filter(item => {
-    const equipmentNumber = item.equipmentNumber?.trim();
-    const exists = existingEquipmentSet.has(equipmentNumber);
-    
-    // Enhanced debugging for T11 and T21
-    if (equipmentNumber === 'T11' || equipmentNumber === 'T21') {
-      console.log(`🔍 DEBUG ${equipmentNumber}:`);
-      console.log(`   Equipment Number: "${equipmentNumber}"`);
-      console.log(`   Exists in extracted list: ${exists}`);
-      console.log(`   Commissioning: ${item.commissioning}`);
-      console.log(`   Subsystem: ${item.subsystem}`);
-    }
-    
-    return !exists; // Return true if equipment is missing
-  });
-  
-  const analysis = compareEquipmentLists(existingEquipmentNumbers, commissionedEquipment);
-  
-  console.log(`\n🎯 FINAL ANALYSIS:`);
-  console.log(`   - Existing equipment: ${existingEquipmentNumbers.length}`);
-  console.log(`   - Valid new equipment: ${commissionedEquipment.length}`);
-  console.log(`   - Missing equipment: ${missingEquipment.length}`);
-  
-  if (missingEquipment.length === 0) {
-    console.log("✅ SUCCESS: No missing equipment found - all commissioned/TBC equipment exists in WBS structure");
-    return {
-      allNodes: existingWbsNodes.map(node => ({ ...node, isExisting: true })),
-      newNodes: [],
-      analysis: {
-        newEquipment: [],
-        existingEquipment: analysis.existingEquipment,
-        removedEquipment: analysis.removedEquipment
-      },
-      projectName: existingProjectName
-    };
-  }
-
-  console.log("🏗️ Building new WBS nodes for missing equipment...");
-  
-  const allNodes = [];
-  const newNodes = [];
-  
-  // Add all existing nodes to visualization
-  existingWbsNodes.forEach(node => {
-    allNodes.push({
-      ...node,
-      isExisting: true
-    });
-  });
-  
-  // Process missing equipment by commissioning status
-  const missingCommissioned = missingEquipment.filter(item => item.commissioning === 'Y');
-  const missingTBC = missingEquipment.filter(item => item.commissioning === 'TBC');
-  
-  console.log(`✅ Missing commissioned equipment: ${missingCommissioned.length}`);
-  console.log(`⏳ Missing TBC equipment: ${missingTBC.length}`);
-  
-  // Add missing commissioned equipment to appropriate subsystems
-  let newNodeCounter = Math.max(...allNodes.map(n => {
-    const parts = n.wbs_code.split('.');
-    return parseInt(parts[parts.length - 1]) || 0;
-  })) + 1;
-  
-  missingCommissioned.forEach(item => {
-    // Find subsystem match
-    let subsystemWbsCode = null;
-    for (const [subsystemName, wbsCode] of existingSubsystems) {
-      if (subsystemName.includes(item.subsystem) || item.subsystem.includes(subsystemName)) {
-        subsystemWbsCode = wbsCode;
-        break;
-      }
-    }
-    
-    if (subsystemWbsCode) {
-      // Determine category for this equipment
-      let category = determineCategoryCode(item, missingEquipment);
-      
-      if (category === 'TBC') {
-        // This should not happen for commissioned equipment, but handle it
-        console.log(`⚠️ Commissioned equipment ${item.equipmentNumber} returned TBC category - treating as 99`);
-        category = '99';
-      }
-      
-      // Find or create the appropriate category within subsystem
-      let targetCategory = allNodes.find(n => 
-        n.parent_wbs_code === subsystemWbsCode && 
-        n.wbs_name.includes(`${category} |`)
-      );
-      
-      if (!targetCategory) {
-        // Create category if it doesn't exist
-        const categoryId = `${subsystemWbsCode}.${newNodeCounter++}`;
-        const categoryName = categoryMapping[category] || 'Unknown Category';
-        targetCategory = {
-          wbs_code: categoryId,
-          parent_wbs_code: subsystemWbsCode,
-          wbs_name: `${category} | ${categoryName}`,
-          isNew: true
-        };
-        allNodes.push(targetCategory);
-        newNodes.push(targetCategory);
-      }
-      
-      // Add equipment to category
-      const equipmentId = `${targetCategory.wbs_code}.${newNodeCounter++}`;
-      const equipmentNode = {
-        wbs_code: equipmentId,
-        parent_wbs_code: targetCategory.wbs_code,
-        wbs_name: `${item.equipmentNumber} | ${item.description}`,
-        isNew: true
-      };
-      
-      allNodes.push(equipmentNode);
-      newNodes.push(equipmentNode);
-      
-      // Handle child equipment
-      const childEquipment = missingEquipment.filter(child => 
-        child.parentEquipmentNumber === item.equipmentNumber && 
-        child.commissioning === 'Y'
-      );
-      
-      let childCounter = 1;
-      childEquipment.forEach(child => {
-        const childWbsCode = `${equipmentId}.${childCounter}`;
-        const childNode = {
-          wbs_code: childWbsCode,
-          parent_wbs_code: equipmentId,
-          wbs_name: `${child.equipmentNumber} | ${child.description}`,
-          isNew: true
-        };
-        
-        allNodes.push(childNode);
-        newNodes.push(childNode);
-        childCounter++;
-      });
-    }
-  });
-  
-  // Handle new TBC equipment
-  if (missingTBC.length > 0) {
-    console.log(`⏳ Processing ${missingTBC.length} TBC equipment items`);
-    
-    let tbcNode = allNodes.find(node => 
-      node.wbs_name.includes('TBC - Equipment To Be Confirmed')
-    );
-    
-    if (!tbcNode) {
-      const projectNode = allNodes.find(node => node.parent_wbs_code === null);
-      const nextSubsystemCode = findNextWBSCode(projectNode.wbs_code, allNodes);
-      
-      tbcNode = {
-        wbs_code: nextSubsystemCode,
-        parent_wbs_code: projectNode.wbs_code,
-        wbs_name: "TBC - Equipment To Be Confirmed",
-        isNew: true
-      };
-      
-      allNodes.push(tbcNode);
-      newNodes.push(tbcNode);
-    }
-    
-    missingTBC.forEach(item => {
-      const tbcItemCode = findNextWBSCode(tbcNode.wbs_code, allNodes);
-      const tbcItemNode = {
-        wbs_code: tbcItemCode,
-        parent_wbs_code: tbcNode.wbs_code,
-        wbs_name: `${item.equipmentNumber} | ${item.description}`,
-        isNew: true
-      };
-      
-      allNodes.push(tbcItemNode);
-      newNodes.push(tbcItemNode);
-    });
-  }
-  
-  console.log(`\n🎯 Final results:`);
-  console.log(`   New WBS nodes created: ${newNodes.length}`);
-  console.log(`   Complete visualization nodes: ${allNodes.length}`);
-  console.log("✅ Missing equipment WBS generation complete");
-  
-  return {
-    allNodes,
-    newNodes,
-    analysis: {
-      newEquipment: missingEquipment,
-      existingEquipment: analysis.existingEquipment,
-      removedEquipment: analysis.removedEquipment
-    },
-    projectName: existingProjectName
-  };
 };
 
 // Main WBS generation function with proper TBC handling
