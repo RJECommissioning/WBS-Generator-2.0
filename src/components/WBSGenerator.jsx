@@ -8,6 +8,9 @@ import { rjeColors, uploadModes, errorMessages, successMessages } from './utils/
 import { processEquipmentFile, processWBSFile, exportWBSToCSV, exportProjectState } from './utils/equipmentUtils.js';
 import { generateWBS, generateMissingEquipmentWBS } from './utils/wbsUtils.js';
 
+// Import the full WBS Tree Visualization component
+import WBSTreeVisualization from './shared/WBSTreeVisualization.jsx';
+
 // Project Context for state management
 const ProjectContext = createContext({
   projectState: null,
@@ -605,66 +608,6 @@ const MissingEquipmentMode = ({
     )}
   </div>
 );
-
-// WBS Tree Visualization Component (simplified - full version would be in separate file)
-const WBSTreeVisualization = ({ wbsNodes = [] }) => {
-  const [showVisualization, setShowVisualization] = useState(true);
-
-  if (!wbsNodes || wbsNodes.length === 0) {
-    return (
-      <div className="bg-white rounded-xl shadow-lg p-6">
-        <h3 className="text-xl font-bold mb-4" style={{ color: rjeColors.darkBlue }}>
-          WBS Structure Visualization
-        </h3>
-        <p className="text-gray-500">No WBS structure to display</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="bg-white rounded-xl shadow-lg p-6">
-      <div className="flex items-center justify-between mb-6">
-        <h3 className="text-xl font-bold" style={{ color: rjeColors.darkBlue }}>
-          WBS Structure Visualization ({wbsNodes.length} nodes)
-        </h3>
-        <button
-          onClick={() => setShowVisualization(!showVisualization)}
-          className="flex items-center px-4 py-2 text-white rounded-lg font-medium"
-          style={{ backgroundColor: rjeColors.teal }}
-        >
-          {showVisualization ? <EyeOff className="w-4 h-4 mr-2" /> : <Eye className="w-4 h-4 mr-2" />}
-          {showVisualization ? 'Hide' : 'Show'} Tree
-        </button>
-      </div>
-
-      {showVisualization && (
-        <div className="bg-gray-50 rounded-lg p-4 max-h-96 overflow-y-auto">
-          <div className="text-sm font-mono">
-            {wbsNodes.slice(0, 50).map(node => (
-              <div key={node.wbs_code} className="py-1 flex items-center">
-                <span className="text-blue-600 mr-2">{node.wbs_code}</span>
-                <span className="text-gray-700">{node.wbs_name}</span>
-                {node.isNew && (
-                  <span className="text-xs px-2 py-1 ml-2 rounded" style={{ backgroundColor: rjeColors.mediumGreen, color: 'white' }}>
-                    NEW
-                  </span>
-                )}
-                {node.isExisting && (
-                  <span className="text-xs px-2 py-1 ml-2 rounded" style={{ backgroundColor: rjeColors.teal, color: 'white' }}>
-                    EXISTING
-                  </span>
-                )}
-              </div>
-            ))}
-            {wbsNodes.length > 50 && (
-              <div className="text-gray-500 py-2">... and {wbsNodes.length - 50} more nodes</div>
-            )}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
 
 // Export Panel Component
 const ExportPanel = ({ 
