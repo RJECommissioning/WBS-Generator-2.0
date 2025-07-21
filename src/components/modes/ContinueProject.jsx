@@ -6,7 +6,7 @@ const ProjectSelectionUI = () => {
   const [step, setStep] = useState('upload');
   const [availableProjects, setAvailableProjects] = useState([]);
   const [selectedProject, setSelectedProject] = useState(null);
-  const [parserInstance, setParserInstance] = useState(null);
+  const [analysisResult, setAnalysisResult] = useState(null); // FIXED: Store full analysis result
   const [projectResults, setProjectResults] = useState(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -31,10 +31,10 @@ const ProjectSelectionUI = () => {
     try {
       console.log('Analyzing XER file for available projects...');
       
-      // FIXED: Use real function instead of mock
+      // FIXED: Use real function and store full analysis result
       const analysis = await getAvailableProjects(file);
       
-      setParserInstance(analysis.parser);
+      setAnalysisResult(analysis); // FIXED: Store complete analysis result
       setAvailableProjects(analysis.availableProjects);
       
       if (analysis.requiresProjectSelection) {
@@ -60,12 +60,8 @@ const ProjectSelectionUI = () => {
     try {
       console.log('Processing selected project:', projectId);
       
-      // FIXED: Use real function instead of mock  
-      const results = await processSelectedProject({ 
-        parser: parserInstance, 
-        availableProjects, 
-        projwbsData: parserInstance.projwbsData 
-      }, projectId);
+      // FIXED: Pass the complete analysisResult instead of constructing it
+      const results = await processSelectedProject(analysisResult, projectId);
       
       setProjectResults(results);
       setStep('complete');
@@ -89,7 +85,7 @@ const ProjectSelectionUI = () => {
     setStep('upload');
     setAvailableProjects([]);
     setSelectedProject(null);
-    setParserInstance(null);
+    setAnalysisResult(null); // FIXED: Reset analysis result
     setProjectResults(null);
     setError(null);
     if (fileInputRef.current) {
@@ -251,9 +247,9 @@ const ProjectSelectionUI = () => {
     // FIXED: Calculate hierarchy levels properly using the parser's method
     const calculateHierarchyLevels = () => {
       try {
-        // Try to get hierarchy levels from the parser instance
-        if (parserInstance && typeof parserInstance.calculateHierarchyLevels === 'function') {
-          return parserInstance.calculateHierarchyLevels();
+        // Try to get hierarchy levels from the parser instance in analysisResult
+        if (analysisResult && analysisResult.parser && typeof analysisResult.parser.calculateHierarchyLevels === 'function') {
+          return analysisResult.parser.calculateHierarchyLevels();
         }
         
         // Try to get it from project results
@@ -369,8 +365,8 @@ const ProjectSelectionUI = () => {
           {/* Additional debug info for troubleshooting */}
           <div className="mt-3 pt-3 border-t border-gray-200 text-xs text-gray-500">
             <p>Hierarchy Map size: {projectResults.hierarchy?.size || 0}</p>
-            <p>Parser instance available: {parserInstance ? 'Yes' : 'No'}</p>
-            <p>calculateHierarchyLevels method: {(parserInstance && typeof parserInstance.calculateHierarchyLevels === 'function') ? 'Available' : 'Not Available'}</p>
+            <p>Parser instance available: {analysisResult?.parser ? 'Yes' : 'No'}</p>
+            <p>calculateHierarchyLevels method: {(analysisResult?.parser && typeof analysisResult.parser.calculateHierarchyLevels === 'function') ? 'Available' : 'Not Available'}</p>
             <p>Project results hierarchyLevels: {projectResults.hierarchyLevels || 'Not Set'}</p>
           </div>
         </div>
