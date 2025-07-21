@@ -168,7 +168,8 @@ export class XERParser {
   async extractPROJWBSFromCSV(content) {
     console.log('🔍 Processing CSV format');
     
-    const Papa = await import('papaparse');
+    // Use CDN import for PapaParse
+    const Papa = await import('https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js');
     const delimiter = this.detectCSVDelimiter(content);
     console.log(`📊 CSV delimiter detected: "${delimiter}"`);
     
@@ -532,6 +533,36 @@ export class ParentStructureManager {
     console.log(`🔢 Next subsystem number: S${nextNumber}`);
     return nextNumber;
   }
+
+  validateParentStructures(parentStructures) {
+    const validation = {
+      isValid: true,
+      warnings: [],
+      errors: [],
+      recommendations: []
+    };
+
+    if (!parentStructures.prerequisites) {
+      validation.warnings.push('No "P | Pre-Requisites" section found');
+      validation.recommendations.push('Consider adding Prerequisites section for proper subsystem dependencies');
+    }
+
+    if (!parentStructures.milestones) {
+      validation.warnings.push('No "M | Milestones" section found');
+      validation.recommendations.push('Milestones section recommended for project tracking');
+    }
+
+    if (parentStructures.subsystems.length === 0) {
+      validation.errors.push('No existing subsystems found (S1, S2, etc.)');
+      validation.isValid = false;
+    }
+
+    console.log(`🔍 Parent Structure Validation: ${validation.isValid ? 'PASSED' : 'FAILED'}`);
+    console.log(`   Warnings: ${validation.warnings.length}`);
+    console.log(`   Errors: ${validation.errors.length}`);
+
+    return validation;
+  }
 }
 
 // ============================================================================
@@ -774,17 +805,15 @@ async function extractFromExcel(file) {
   try {
     let data;
     
-    if (typeof window !== 'undefined' && window.fs) {
-      data = await window.fs.readFile(file.name);
-    } else {
-      data = await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = (e) => resolve(new Uint8Array(e.target.result));
-        reader.onerror = (e) => reject(new Error('Failed to read file as ArrayBuffer'));
-        reader.readAsArrayBuffer(file);
-      });
-    }
+    // Use FileReader for browser environment
+    data = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => resolve(new Uint8Array(e.target.result));
+      reader.onerror = (e) => reject(new Error('Failed to read file as ArrayBuffer'));
+      reader.readAsArrayBuffer(file);
+    });
     
+    // Import SheetJS from CDN
     const XLSX = await import('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js');
     
     const workbook = XLSX.read(data, { 
@@ -834,18 +863,21 @@ async function extractFromCSV(file) {
     const delimiter = detectCSVDelimiter(content);
     console.log(`📊 CSV delimiter detected: "${delimiter}"`);
     
-    const lines = content.split('\n');
-    const headers = lines[0].split(delimiter);
-    const rows = lines.slice(1);
+    // Use CDN import for PapaParse
+    const Papa = await import('https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js');
     
-    const records = rows.map(line => {
-      const values = line.split(delimiter);
-      const record = {};
-      headers.forEach((header, index) => {
-        record[header.trim()] = values[index] ? values[index].trim() : null;
-      });
-      return record;
-    }).filter(record => record.wbs_id && record.wbs_name);
+    const parsed = Papa.default.parse(content, {
+      header: true,
+      dynamicTyping: true,
+      skipEmptyLines: true,
+      delimiter: delimiter
+    });
+    
+    if (parsed.errors.length > 0) {
+      console.warn('⚠️ CSV parsing warnings:', parsed.errors);
+    }
+    
+    const records = parsed.data.filter(record => record.wbs_id && record.wbs_name);
     
     console.log(`✅ Extracted ${records.length} valid CSV records`);
     return records;
