@@ -1,417 +1,922 @@
-import React, { useState, useRef } from 'react';
-import { Upload, CheckCircle, Clock, Building2, AlertTriangle } from 'lucide-react';
+// src/components/utils/xerParser.js - Clean XER Parser (JavaScript Only)
 
-const ProjectSelectionUI = () => {
-  const [step, setStep] = useState('upload');
-  const [availableProjects, setAvailableProjects] = useState([]);
-  const [selectedProject, setSelectedProject] = useState(null);
-  const [analysisResult, setAnalysisResult] = useState(null);
-  const [projectResults, setProjectResults] = useState(null);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [error, setError] = useState(null);
+/**
+ * XER File Processing Engine for Primavera P6 Integration
+ * JavaScript utility functions only - NO JSX/React components
+ */
 
-  const fileInputRef = useRef(null);
+// ============================================================================
+// XER FILE PROCESSING ENGINE
+// ============================================================================
 
-  const colors = {
-    darkBlue: '#1e3a8a',
-    darkGreen: '#059669',
-    lightGreen: '#10b981',
-    orange: '#f97316'
-  };
+/**
+ * Enhanced XER Parser Class
+ */
+export class XERParser {
+  constructor() {
+    this.projwbsTable = [];
+    this.wbsHierarchy = new Map();
+    this.parentStructures = new Map();
+    this.projectInfo = null;
+    this.debugMode = true;
+  }
 
-  // Mock functions for demo
-  const mockGetAvailableProjects = async (file) => {
-    await new Promise(resolve => setTimeout(resolve, 2000));
+  /**
+   * Parse XER file with enhanced error handling and debugging
+   */
+  async parseXERFile(file) {
+    console.log(`🔧 XER Parser: Processing file "${file.name}"`);
     
-    return {
-      parser: {},
-      availableProjects: [
-        {
-          proj_id: '684',
-          project_name: 'Summerfield',
-          project_code: '5737',
-          wbs_element_count: 471,
-          plan_start_date: '2024-01-15',
-          plan_end_date: '2024-12-31'
-        },
-        {
-          proj_id: '685',
-          project_name: 'Northgate Substation',
-          project_code: '5823',
-          wbs_element_count: 298,
-          plan_start_date: '2024-03-01',
-          plan_end_date: '2025-08-30'
-        },
-        {
-          proj_id: '686',
-          project_name: 'Western Distribution',
-          project_code: '5901',
-          wbs_element_count: 156,
-          plan_start_date: '2024-06-01',
-          plan_end_date: '2025-03-15'
-        }
-      ],
-      totalProjects: 3,
-      totalWBSElements: 925,
-      requiresProjectSelection: true
-    };
-  };
-
-  const mockProcessSelectedProject = async (parser, projectId) => {
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    
-    return {
-      selectedProject: { proj_id: projectId },
-      wbsElements: [],
-      hierarchy: new Map(),
-      parentStructures: {
-        prerequisites: { wbs_id: '24926', wbs_name: 'P | Pre-Requisites' },
-        milestones: { wbs_id: '24927', wbs_name: 'M | Milestones' },
-        energisation: { wbs_id: '24925', wbs_name: 'E | Energisation' },
-        subsystems: [
-          {
-            element: { wbs_id: '24929', wbs_name: 'S1 | +Z01 - 33kV Switchroom 1' },
-            subsystemNumber: 1,
-            zoneCode: '+Z01'
-          }
-        ],
-        tbcSection: { wbs_id: '24934', wbs_name: 'TBC - Equipment To Be Confirmed' },
-        root: { wbs_id: '24923', wbs_name: 'Summerfield' }
-      },
-      projectInfo: {
-        projectId: projectId,
-        projectName: projectId === '684' ? 'Summerfield' : 'Other Project',
-        projectCode: projectId === '684' ? '5737' : 'OTHER',
-        rootWbsId: '24923',
-        totalElements: projectId === '684' ? 471 : 100
-      },
-      totalElements: projectId === '684' ? 471 : 100
-    };
-  };
-
-  const handleFileUpload = async (event) => {
-    const file = event.target.files[0];
-    if (!file) return;
-
-    console.log('🚨 IMPORT TEST:', typeof getAvailableProjects, typeof processSelectedProject);
-
-    setIsAnalyzing(true);
-    setError(null);
-
     try {
-      console.log('Analyzing XER file for available projects...');
+      // 1. Read file content
+      const content = await this.readFile(file);
+      console.log(`📄 File content length: ${content.length} characters`);
       
-      // Use the real XER parser
-      const analysis = await getAvailableProjects(file);
+      // 2. Determine file format
+      const isXER = this.detectXERFormat(content);
+      console.log(`📋 File format detected: ${isXER ? 'XER' : 'CSV'}`);
       
-      setAnalysisResult(analysis);
-      setAvailableProjects(analysis.availableProjects);
-      
-      if (analysis.requiresProjectSelection) {
-        setStep('selecting');
-        console.log(`Found ${analysis.totalProjects} projects - user selection required`);
+      let projwbsData;
+      if (isXER) {
+        projwbsData = this.extractPROJWBSFromXER(content);
       } else {
-        setSelectedProject(analysis.availableProjects[0]);
-        await processProject(analysis.availableProjects[0].proj_id);
+        projwbsData = await this.extractPROJWBSFromCSV(content);
       }
-
+      
+      console.log(`📊 Raw PROJWBS records extracted: ${projwbsData.length}`);
+      
+      if (projwbsData.length === 0) {
+        throw new Error('No PROJWBS data found in file. Please ensure this is a valid P6 export.');
+      }
+      
+      // 4. Filter for target project
+      const projectId = this.autoDetectProjectId(projwbsData);
+      const projectWBS = this.filterByProject(projwbsData, projectId);
+      
+      console.log(`🎯 Project ${projectId}: Found ${projectWBS.length} WBS elements`);
+      
+      // 5. Build hierarchy map
+      this.buildHierarchyMapFixed(projectWBS);
+      
+      // 6. Identify parent structures
+      const parentStructures = this.identifyParentStructuresFixed(projectWBS);
+      
+      // 7. Extract project information
+      this.projectInfo = this.extractProjectInfo(projectWBS);
+      
+      // 8. Validation and debugging
+      this.validateResults(projectWBS, parentStructures);
+      
+      return {
+        wbsElements: projectWBS,
+        hierarchy: this.wbsHierarchy,
+        parentStructures: parentStructures,
+        projectInfo: this.projectInfo,
+        totalElements: projectWBS.length
+      };
+      
     } catch (error) {
-      console.error('XER Analysis failed:', error);
-      setError('Failed to analyze XER file: ' + error.message);
-    } finally {
-      setIsAnalyzing(false);
+      console.error('🚫 XER Parser Error:', error);
+      throw new Error(`Failed to parse XER file: ${error.message}`);
     }
-  };
+  }
 
-  const processProject = async (projectId) => {
-    setIsProcessing(true);
-    setError(null);
-
-    try {
-      console.log('Processing selected project:', projectId);
-      
-      // Use the real XER parser
-      const results = await processSelectedProject(analysisResult, projectId);
-      
-      setProjectResults(results);
-      setStep('complete');
-      
-      console.log('Project processing complete:', results.totalElements, 'elements processed');
-
-    } catch (error) {
-      console.error('Project processing failed:', error);
-      setError('Failed to process selected project: ' + error.message);
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
-  const handleProjectSelect = (project) => {
-    setSelectedProject(project);
-    processProject(project.proj_id);
-  };
-
-  const handleStartOver = () => {
-    setStep('upload');
-    setAvailableProjects([]);
-    setSelectedProject(null);
-    setAnalysisResult(null);
-    setProjectResults(null);
-    setError(null);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
-  };
-
-  const renderUploadStep = () => (
-    <div className="bg-white rounded-xl shadow-lg p-8">
-      <h2 className="text-2xl font-bold mb-6" style={{ color: colors.darkBlue }}>
-        Multi-Project XER Analysis
-      </h2>
-      
-      <div className="mb-6 p-4 bg-green-50">
-        <h4 className="font-semibold mb-2" style={{ color: colors.darkBlue }}>
-          Enhanced XER Processing:
-        </h4>
-        <ul className="text-sm space-y-1 text-gray-700">
-          <li>Automatically detects all projects in your XER file</li>
-          <li>Extracts PROJECT table and PROJWBS table data</li>
-          <li>Shows WBS element count for each project</li>
-          <li>Allows you to select which project to continue</li>
-        </ul>
-      </div>
-
-      <div className="border-2 border-dashed rounded-lg p-8 text-center" 
-           style={{ borderColor: colors.darkGreen }}>
-        <Upload className="w-12 h-12 mx-auto mb-4" style={{ color: colors.darkGreen }} />
-        <h3 className="text-lg font-semibold mb-2">Upload P6 XER Export File</h3>
-        <p className="text-gray-600 mb-4">
-          Select your P6 export file (.xer, .csv, or .xlsx format)
-        </p>
-        
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".xer,.csv,.xlsx,.xls"
-          onChange={handleFileUpload}
-          className="hidden"
-          disabled={isAnalyzing}
-        />
-        
-        <button
-          onClick={() => fileInputRef.current?.click()}
-          disabled={isAnalyzing}
-          className="px-6 py-3 text-white rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-          style={{ backgroundColor: colors.darkGreen }}
-        >
-          {isAnalyzing ? (
-            <>
-              <Clock className="w-4 h-4 inline mr-2 animate-spin" />
-              Analyzing Projects...
-            </>
-          ) : (
-            <>
-              <Upload className="w-4 h-4 inline mr-2" />
-              Choose XER File
-            </>
-          )}
-        </button>
-      </div>
-
-      {error && (
-        <div className="mt-4 p-4 bg-red-50 border-l-4 border-red-500 rounded">
-          <div className="flex">
-            <AlertTriangle className="w-5 h-5 text-red-500 mr-2" />
-            <div>
-              <p className="font-medium text-red-800">Analysis Failed</p>
-              <p className="text-sm text-red-700">{error}</p>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-
-  const renderProjectSelection = () => (
-    <div className="bg-white rounded-xl shadow-lg p-8">
-      <h2 className="text-2xl font-bold mb-6" style={{ color: colors.darkBlue }}>
-        Select Project to Continue
-      </h2>
-      
-      <div className="mb-6 p-4 bg-blue-50">
-        <p className="text-sm text-blue-800">
-          Found {availableProjects.length} projects in your XER file. 
-          Select the project you want to continue working with:
-        </p>
-      </div>
-
-      <div className="space-y-4">
-        {availableProjects.map((project) => (
-          <div
-            key={project.proj_id}
-            className="border-2 rounded-lg p-4 cursor-pointer transition-all duration-200 hover:shadow-lg"
-            style={{ 
-              borderColor: selectedProject?.proj_id === project.proj_id ? colors.darkGreen : '#e5e7eb'
-            }}
-            onClick={() => handleProjectSelect(project)}
-          >
-            <div className="flex items-center justify-between">
-              <div className="flex-1">
-                <h3 className="text-lg font-semibold" style={{ color: colors.darkBlue }}>
-                  {project.project_name}
-                </h3>
-                <div className="flex items-center gap-4 mt-2 text-sm text-gray-600">
-                  <span>Project ID: {project.proj_id}</span>
-                  <span>Code: {project.project_code}</span>
-                  <span>{project.wbs_element_count} WBS Elements</span>
-                </div>
-                {project.plan_start_date && (
-                  <div className="mt-2 text-sm text-gray-500">
-                    {project.plan_start_date} - {project.plan_end_date}
-                  </div>
-                )}
-              </div>
-              
-              <div className="flex items-center">
-                <Building2 className="w-8 h-8 mr-4" style={{ color: colors.darkGreen }} />
-                <CheckCircle 
-                  className="w-6 h-6" 
-                  style={{ 
-                    color: selectedProject?.proj_id === project.proj_id ? colors.darkGreen : '#d1d5db'
-                  }} 
-                />
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {isProcessing && (
-        <div className="mt-6 p-4 bg-blue-50 rounded-lg">
-          <div className="flex items-center">
-            <Clock className="w-5 h-5 text-blue-500 mr-3 animate-spin" />
-            <div>
-              <p className="font-medium text-blue-800">Processing Selected Project</p>
-              <p className="text-sm text-blue-600">
-                Parsing WBS structure and identifying parent elements...
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      <div className="mt-6 flex gap-3">
-        <button
-          onClick={handleStartOver}
-          className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
-        >
-          Back to File Selection
-        </button>
-      </div>
-    </div>
-  );
-
-  const renderResults = () => {
-    const { projectInfo, parentStructures, totalElements } = projectResults;
+  /**
+   * Enhanced file format detection
+   */
+  detectXERFormat(content) {
+    const xerIndicators = ['%T\tPROJWBS', '%F\t', '%R\t'];
+    const hasXERIndicators = xerIndicators.some(indicator => content.includes(indicator));
     
-    return (
-      <div className="bg-white rounded-xl shadow-lg p-8">
-        <h2 className="text-2xl font-bold mb-6" style={{ color: colors.darkBlue }}>
-          Project Analysis Complete
-        </h2>
-
-        <div className="mb-6 p-6 bg-green-50">
-          <h3 className="text-xl font-semibold mb-4" style={{ color: colors.darkBlue }}>
-            Project: {projectInfo.projectName}
-          </h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <p><strong>Project ID:</strong> {projectInfo.projectId}</p>
-              <p><strong>Project Code:</strong> {projectInfo.projectCode}</p>
-              <p><strong>Root WBS ID:</strong> {projectInfo.rootWbsId}</p>
-            </div>
-            <div>
-              <p><strong>Total Elements:</strong> {totalElements}</p>
-              <p><strong>Subsystems Found:</strong> {parentStructures.subsystems.length}</p>
-              <p><strong>Next Available:</strong> S{parentStructures.subsystems.length + 1}</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="mb-6">
-          <h3 className="text-lg font-semibold mb-4" style={{ color: colors.darkBlue }}>
-            Parent Structures Identified
-          </h3>
-          <div className="space-y-3">
-            {[
-              { key: 'prerequisites', icon: 'P', name: 'Prerequisites' },
-              { key: 'milestones', icon: 'M', name: 'Milestones' },
-              { key: 'energisation', icon: 'E', name: 'Energisation' },
-              { key: 'tbcSection', icon: 'T', name: 'TBC Section' }
-            ].map(({ key, icon, name }) => (
-              <div key={key} className="flex items-center justify-between p-3 border rounded">
-                <span>{icon} - {name}</span>
-                {parentStructures[key] ? (
-                  <span className="text-green-600 font-medium">
-                    FOUND: {parentStructures[key].wbs_name}
-                  </span>
-                ) : (
-                  <span className="text-gray-500">Not Found</span>
-                )}
-              </div>
-            ))}
-            
-            <div className="flex items-center justify-between p-3 border rounded">
-              <span>Existing Subsystems</span>
-              <span className="text-green-600 font-medium">
-                {parentStructures.subsystems.length} Found: {
-                  parentStructures.subsystems.map(s => `S${s.subsystemNumber}`).join(', ')
-                }
-              </span>
-            </div>
-          </div>
-        </div>
-
-        <div className="flex gap-4">
-          <button
-            className="px-6 py-3 text-white rounded-lg font-medium"
-            style={{ backgroundColor: colors.darkGreen }}
-            onClick={() => {
-              console.log('Ready to continue with equipment addition');
-            }}
-          >
-            Continue with Equipment Addition
-          </button>
-          
-          <button
-            onClick={handleStartOver}
-            className="px-4 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
-          >
-            Analyze Different Project
-          </button>
-        </div>
-
-        <div className="mt-8 p-4 bg-gray-50 rounded-lg">
-          <h4 className="font-semibold text-gray-700 mb-2">Debug Information</h4>
-          <div className="text-xs text-gray-600 space-y-1">
-            <p>Hierarchy levels: {projectResults.hierarchy?.size || 0}</p>
-            <p>Parser validation: Passed</p>
-            <p>WBS structure integrity: Validated</p>
-            <p>Ready for subsystem addition: Yes</p>
-          </div>
-        </div>
-      </div>
+    const lines = content.split('\n').slice(0, 5);
+    const hasCSVHeaders = lines.some(line => 
+      line.includes('wbs_id') || 
+      line.includes('wbs_name') || 
+      line.includes('parent_wbs_id')
     );
-  };
+    
+    console.log(`🔍 Format detection - XER indicators: ${hasXERIndicators}, CSV headers: ${hasCSVHeaders}`);
+    
+    return hasXERIndicators && !hasCSVHeaders;
+  }
 
-  return (
-    <div className="max-w-4xl mx-auto p-6">
-      {step === 'upload' && renderUploadStep()}
-      {step === 'selecting' && renderProjectSelection()}
-      {step === 'complete' && renderResults()}
-    </div>
-  );
+  /**
+   * Read file content
+   */
+  async readFile(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => resolve(e.target.result);
+      reader.onerror = (e) => reject(new Error('Failed to read file'));
+      reader.readAsText(file);
+    });
+  }
+
+  /**
+   * Extract PROJWBS table from XER format
+   */
+  extractPROJWBSFromXER(content) {
+    console.log('🔍 Extracting PROJWBS table from XER format');
+    
+    const lines = content.split('\n');
+    const projwbsData = [];
+    let inProjwbsSection = false;
+    let headers = [];
+    
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+      
+      if (line === '%T\tPROJWBS') {
+        inProjwbsSection = true;
+        console.log(`📍 Found PROJWBS table at line ${i + 1}`);
+        continue;
+      }
+      
+      if (inProjwbsSection && line.startsWith('%F\t')) {
+        headers = line.substring(3).split('\t');
+        console.log(`📋 PROJWBS headers: ${headers.join(', ')}`);
+        continue;
+      }
+      
+      if (inProjwbsSection && line.startsWith('%R\t')) {
+        const values = line.substring(3).split('\t');
+        const record = {};
+        
+        headers.forEach((header, index) => {
+          record[header] = values[index] || null;
+        });
+        
+        if (record.wbs_id && record.wbs_name) {
+          projwbsData.push(record);
+        }
+        continue;
+      }
+      
+      if (inProjwbsSection && line.startsWith('%T\t') && line !== '%T\tPROJWBS') {
+        console.log(`📍 End of PROJWBS table at line ${i + 1}`);
+        break;
+      }
+    }
+    
+    console.log(`✅ Extracted ${projwbsData.length} PROJWBS records`);
+    return projwbsData;
+  }
+
+  /**
+   * Extract PROJWBS data from CSV format
+   */
+  async extractPROJWBSFromCSV(content) {
+    console.log('🔍 Processing CSV format');
+    
+    const Papa = await import('papaparse');
+    const delimiter = this.detectCSVDelimiter(content);
+    console.log(`📊 CSV delimiter detected: "${delimiter}"`);
+    
+    const parsed = Papa.default.parse(content, {
+      header: true,
+      dynamicTyping: true,
+      skipEmptyLines: true,
+      delimiter: delimiter
+    });
+    
+    if (parsed.errors.length > 0) {
+      console.warn('⚠️ CSV parsing warnings:', parsed.errors);
+    }
+    
+    const validRecords = parsed.data.filter(record => 
+      record.wbs_id && record.wbs_name
+    );
+    
+    console.log(`✅ Extracted ${validRecords.length} valid CSV records`);
+    return validRecords;
+  }
+
+  /**
+   * Detect CSV delimiter
+   */
+  detectCSVDelimiter(content) {
+    const firstLine = content.split('\n')[0];
+    if (firstLine.includes('\t')) return '\t';
+    if (firstLine.includes(';')) return ';';
+    return ',';
+  }
+
+  /**
+   * Auto-detect project ID
+   */
+  autoDetectProjectId(projwbsData) {
+    if (projwbsData.length === 0) return null;
+    
+    const projectCounts = {};
+    projwbsData.forEach(record => {
+      const projId = record.proj_id;
+      if (projId) {
+        projectCounts[projId] = (projectCounts[projId] || 0) + 1;
+      }
+    });
+    
+    const mainProjectId = Object.keys(projectCounts).reduce((a, b) => 
+      projectCounts[a] > projectCounts[b] ? a : b
+    );
+    
+    console.log(`🎯 Auto-detected project ID: ${mainProjectId} (${projectCounts[mainProjectId]} elements)`);
+    return mainProjectId;
+  }
+
+  /**
+   * Filter WBS elements by project ID
+   */
+  filterByProject(projwbsData, projectId) {
+    return projwbsData.filter(record => 
+      !projectId || record.proj_id?.toString() === projectId?.toString()
+    );
+  }
+
+  /**
+   * Build hierarchy map with enhanced parent-child relationship logic
+   */
+  buildHierarchyMapFixed(projectWBS) {
+    console.log('🏗️ Building WBS hierarchy map with enhanced logic');
+    
+    this.wbsHierarchy.clear();
+    
+    const wbsLookup = new Map();
+    projectWBS.forEach(element => {
+      wbsLookup.set(element.wbs_id, element);
+    });
+    
+    console.log(`📊 Created lookup map with ${wbsLookup.size} elements`);
+    
+    let rootNodes = 0;
+    let orphanedNodes = 0;
+    
+    projectWBS.forEach(element => {
+      const parentId = element.parent_wbs_id;
+      
+      if (!parentId || parentId === '' || parentId === element.wbs_id) {
+        if (!this.wbsHierarchy.has(null)) {
+          this.wbsHierarchy.set(null, []);
+        }
+        this.wbsHierarchy.get(null).push(element);
+        rootNodes++;
+      } else {
+        const parentExists = wbsLookup.has(parentId);
+        
+        if (parentExists) {
+          if (!this.wbsHierarchy.has(parentId)) {
+            this.wbsHierarchy.set(parentId, []);
+          }
+          this.wbsHierarchy.get(parentId).push(element);
+        } else {
+          if (this.debugMode) {
+            console.warn(`⚠️ Orphaned node ${element.wbs_id} (parent ${parentId} not found)`);
+          }
+          orphanedNodes++;
+          
+          if (!this.wbsHierarchy.has(null)) {
+            this.wbsHierarchy.set(null, []);
+          }
+          this.wbsHierarchy.get(null).push(element);
+        }
+      }
+    });
+    
+    console.log(`✅ Hierarchy built successfully`);
+    console.log(`   📊 Root nodes: ${rootNodes}`);
+    console.log(`   📊 Orphaned nodes: ${orphanedNodes}`);
+    console.log(`   📊 Parent groups: ${this.wbsHierarchy.size}`);
+    
+    if (this.debugMode && rootNodes > 10) {
+      console.warn(`⚠️ Unusually high number of root nodes (${rootNodes}). This may indicate hierarchy parsing issues.`);
+    }
+  }
+
+  /**
+   * Identify parent structures with enhanced pattern matching
+   */
+  identifyParentStructuresFixed(wbsElements) {
+    console.log('🔍 Analyzing WBS patterns with enhanced recognition');
+    
+    const patterns = {
+      prerequisites: [
+        /^P\s*\|\s*Pre-?[Rr]equisites?/i,
+        /^Pre-?[Rr]equisites?/i,
+        /^P\s+Pre-?[Rr]equisites?/i
+      ],
+      milestones: [
+        /^M\s*\|\s*Milestones?/i,
+        /^Milestones?/i,
+        /^M\s+Milestones?/i
+      ],
+      energisation: [
+        /^E\s*\|\s*Energisation?/i,
+        /^Energisation?/i,
+        /^E\s+Energisation?/i
+      ],
+      subsystem: [
+        /^S(\d+)\s*\|\s*([+]?Z\d+)/i,
+        /^S(\d+)\s+([+]?Z\d+)/i,
+        /^S(\d+)\s*[-|]\s*([+]?Z\d+)/i
+      ],
+      tbcSection: [
+        /^TBC\s*[-|]\s*Equipment/i,
+        /^TBC.*Equipment/i,
+        /Equipment.*TBC/i
+      ]
+    };
+
+    const parentStructures = {
+      prerequisites: null,
+      milestones: null,
+      energisation: null,
+      subsystems: [],
+      tbcSection: null,
+      root: null
+    };
+
+    // Find root element
+    const rootElements = wbsElements.filter(el => !el.parent_wbs_id || el.parent_wbs_id === '');
+    if (rootElements.length > 0) {
+      parentStructures.root = rootElements[0];
+      console.log(`🏠 Found root element: "${rootElements[0].wbs_name}"`);
+      
+      if (rootElements.length > 1) {
+        console.warn(`⚠️ Multiple root elements found (${rootElements.length}). Using: "${rootElements[0].wbs_name}"`);
+      }
+    }
+
+    // Analyze each element for parent patterns
+    let matchCount = 0;
+    wbsElements.forEach(element => {
+      const name = element.wbs_name || '';
+      
+      // Check Prerequisites patterns
+      if (!parentStructures.prerequisites) {
+        for (const pattern of patterns.prerequisites) {
+          if (pattern.test(name)) {
+            parentStructures.prerequisites = element;
+            console.log(`📋 Found Prerequisites: "${name}" (ID: ${element.wbs_id})`);
+            matchCount++;
+            break;
+          }
+        }
+      }
+      
+      // Check Milestones patterns
+      if (!parentStructures.milestones) {
+        for (const pattern of patterns.milestones) {
+          if (pattern.test(name)) {
+            parentStructures.milestones = element;
+            console.log(`🎯 Found Milestones: "${name}" (ID: ${element.wbs_id})`);
+            matchCount++;
+            break;
+          }
+        }
+      }
+      
+      // Check Energisation patterns
+      if (!parentStructures.energisation) {
+        for (const pattern of patterns.energisation) {
+          if (pattern.test(name)) {
+            parentStructures.energisation = element;
+            console.log(`⚡ Found Energisation: "${name}" (ID: ${element.wbs_id})`);
+            matchCount++;
+            break;
+          }
+        }
+      }
+      
+      // Check Subsystem patterns
+      for (const pattern of patterns.subsystem) {
+        const match = name.match(pattern);
+        if (match) {
+          const subsystemInfo = {
+            element: element,
+            subsystemNumber: parseInt(match[1]),
+            zoneCode: match[2],
+            fullName: name
+          };
+          parentStructures.subsystems.push(subsystemInfo);
+          console.log(`🏢 Found Subsystem S${subsystemInfo.subsystemNumber}: "${name}" (Zone: ${subsystemInfo.zoneCode})`);
+          matchCount++;
+          break;
+        }
+      }
+      
+      // Check TBC section patterns
+      if (!parentStructures.tbcSection) {
+        for (const pattern of patterns.tbcSection) {
+          if (pattern.test(name)) {
+            parentStructures.tbcSection = element;
+            console.log(`⏳ Found TBC Section: "${name}" (ID: ${element.wbs_id})`);
+            matchCount++;
+            break;
+          }
+        }
+      }
+    });
+
+    // Sort subsystems by number
+    parentStructures.subsystems.sort((a, b) => a.subsystemNumber - b.subsystemNumber);
+
+    console.log(`✅ Parent Structure Analysis Complete (${matchCount} matches found):`);
+    console.log(`   Prerequisites: ${parentStructures.prerequisites ? '✅' : '❌'}`);
+    console.log(`   Milestones: ${parentStructures.milestones ? '✅' : '❌'}`);
+    console.log(`   Energisation: ${parentStructures.energisation ? '✅' : '❌'}`);
+    console.log(`   Subsystems: ${parentStructures.subsystems.length} found`);
+    console.log(`   TBC Section: ${parentStructures.tbcSection ? '✅' : '❌'}`);
+
+    // Warning if no patterns found
+    if (matchCount === 0) {
+      console.warn('⚠️ No standard parent structure patterns found!');
+      console.warn('📝 Sample WBS names for debugging:');
+      wbsElements.slice(0, 10).forEach(el => {
+        console.warn(`   - "${el.wbs_name}" (ID: ${el.wbs_id})`);
+      });
+    }
+
+    return parentStructures;
+  }
+
+  /**
+   * Extract basic project information
+   */
+  extractProjectInfo(projectWBS) {
+    const rootElement = projectWBS.find(el => !el.parent_wbs_id || el.parent_wbs_id === '');
+    
+    return {
+      projectName: rootElement?.wbs_name || 'Unknown Project',
+      projectCode: rootElement?.wbs_short_name || '',
+      rootWbsId: rootElement?.wbs_id || null,
+      totalElements: projectWBS.length
+    };
+  }
+
+  /**
+   * Validate results and provide debugging information
+   */
+  validateResults(projectWBS, parentStructures) {
+    console.log('🔍 Validating parsing results...');
+    
+    const validation = {
+      hasRootElement: !!this.projectInfo.rootWbsId,
+      hasHierarchy: this.wbsHierarchy.size > 0,
+      hasParentStructures: Object.values(parentStructures).some(v => v !== null && (!Array.isArray(v) || v.length > 0)),
+      totalElements: projectWBS.length
+    };
+    
+    console.log('📊 Validation Results:');
+    console.log(`   Root Element: ${validation.hasRootElement ? '✅' : '❌'}`);
+    console.log(`   Hierarchy Built: ${validation.hasHierarchy ? '✅' : '❌'}`);
+    console.log(`   Parent Structures: ${validation.hasParentStructures ? '✅' : '❌'}`);
+    console.log(`   Total Elements: ${validation.totalElements}`);
+    
+    if (!validation.hasParentStructures) {
+      console.warn('⚠️ No parent structures detected. This may indicate:');
+      console.warn('   1. Non-standard WBS naming conventions');
+      console.warn('   2. File format issues');
+      console.warn('   3. Missing required WBS sections');
+    }
+    
+    return validation;
+  }
+}
+
+// ============================================================================
+// PARENT STRUCTURE MANAGER
+// ============================================================================
+
+export class ParentStructureManager {
+  constructor() {
+    this.patterns = {
+      prerequisites: [
+        /^P\s*\|\s*Pre-?[Rr]equisites?/i,
+        /^Pre-?[Rr]equisites?/i,
+        /^P\s+Pre-?[Rr]equisites?/i,
+        /Prerequisites/i
+      ],
+      milestones: [
+        /^M\s*\|\s*Milestones?/i,
+        /^Milestones?/i,
+        /^M\s+Milestones?/i
+      ],
+      energisation: [
+        /^E\s*\|\s*Energisation?/i,
+        /^Energisation?/i,
+        /^E\s+Energisation?/i
+      ],
+      subsystem: [
+        /^S(\d+)\s*\|\s*([+]?Z\d+)/i,
+        /^S(\d+)\s+([+]?Z\d+)/i,
+        /^S(\d+)\s*[-|]\s*([+]?Z\d+)/i
+      ],
+      tbcSection: [
+        /^TBC\s*[-|]\s*Equipment/i,
+        /^TBC.*Equipment/i,
+        /Equipment.*TBC/i
+      ]
+    };
+  }
+
+  identifyParentStructures(wbsElements) {
+    console.log('🔍 Enhanced Parent Structure Manager: Analyzing patterns');
+    return new XERParser().identifyParentStructuresFixed(wbsElements);
+  }
+
+  findNextSubsystemNumber(existingSubsystems) {
+    if (existingSubsystems.length === 0) return 1;
+    
+    const numbers = existingSubsystems.map(s => s.subsystemNumber);
+    const nextNumber = Math.max(...numbers) + 1;
+    
+    console.log(`🔢 Next subsystem number: S${nextNumber}`);
+    return nextNumber;
+  }
+}
+
+// ============================================================================
+// HELPER FUNCTIONS
+// ============================================================================
+
+export const createXERParser = () => {
+  return new XERParser();
 };
 
-export default ProjectSelectionUI;
+export const createParentStructureManager = () => {
+  return new ParentStructureManager();
+};
+
+export const analyzeXERFile = async (file) => {
+  const parser = new XERParser();
+  const structureManager = new ParentStructureManager();
+  
+  console.log('🚀 Starting comprehensive XER file analysis');
+  
+  try {
+    const parseResults = await parser.parseXERFile(file);
+    const parentStructures = parseResults.parentStructures;
+    const validation = structureManager.validateParentStructures(parentStructures);
+    
+    const analysis = {
+      ...parseResults,
+      parentStructures,
+      validation,
+      summary: {
+        projectName: parseResults.projectInfo.projectName,
+        totalElements: parseResults.totalElements,
+        subsystemCount: parentStructures.subsystems.length,
+        nextSubsystemNumber: structureManager.findNextSubsystemNumber(parentStructures.subsystems),
+        hasPrerequisites: !!parentStructures.prerequisites,
+        hasMilestones: !!parentStructures.milestones,
+        validationPassed: validation.isValid
+      }
+    };
+    
+    console.log('✅ XER file analysis complete');
+    console.log(`📊 Summary: ${analysis.summary.totalElements} elements, ${analysis.summary.subsystemCount} subsystems`);
+    
+    return analysis;
+    
+  } catch (error) {
+    console.error('🚫 XER Analysis failed:', error);
+    throw error;
+  }
+};
+
+// ============================================================================
+// EXPORT FUNCTIONS FOR MULTI-PROJECT SUPPORT
+// ============================================================================
+
+/**
+ * Analyze XER file and get available projects
+ */
+export const getAvailableProjects = async (file) => {
+  console.log('🚨 DEBUG: Real getAvailableProjects function called!');
+  console.log('🚨 DEBUG: File name:', file.name);
+  console.log('🚨 DEBUG: File size:', file.size);
+  
+  const parser = new XERParser();
+  console.log('🚀 Starting XER file analysis for project discovery');
+  
+  try {
+    const content = await parser.readFile(file);
+    console.log(`📄 File content length: ${content.length} characters`);
+    
+    const isXER = parser.detectXERFormat(content);
+    console.log(`📋 File format detected: ${isXER ? 'XER' : 'CSV/Excel'}`);
+    
+    let projwbsData;
+    let projectTable = [];
+    
+    if (isXER) {
+      const { projectTable: projects, projwbsTable } = extractTablesFromXER(content);
+      projectTable = projects;
+      projwbsData = projwbsTable;
+    } else {
+      projwbsData = await extractPROJWBSFromFile(file);
+      
+      const projectId = autoDetectProjectId(projwbsData);
+      projectTable = [{
+        proj_id: projectId,
+        proj_short_name: `Project_${projectId}`,
+        project_flag: 'Y'
+      }];
+    }
+    
+    const availableProjects = extractAvailableProjectsFromData(projectTable, projwbsData);
+    
+    console.log(`✅ XER Analysis Complete: ${availableProjects.length} projects found`);
+    
+    return {
+      parser: parser,
+      availableProjects: availableProjects,
+      totalProjects: availableProjects.length,
+      totalWBSElements: projwbsData.length,
+      requiresProjectSelection: availableProjects.length > 1,
+      projwbsData: projwbsData
+    };
+    
+  } catch (error) {
+    console.error('🚫 XER Analysis failed:', error);
+    throw error;
+  }
+};
+
+/**
+ * Process selected project after project selection
+ */
+export const processSelectedProject = async (analysisResult, projectId) => {
+  console.log('🚨 DEBUG: Real processSelectedProject function called!');
+  console.log(`🎯 Processing selected project: ${projectId}`);
+  
+  try {
+    const parser = analysisResult.parser;
+    const projwbsData = analysisResult.projwbsData;
+    
+    const projectWBS = projwbsData.filter(record => 
+      record.proj_id?.toString() === projectId?.toString()
+    );
+    
+    console.log(`📊 Project ${projectId}: Found ${projectWBS.length} WBS elements`);
+    
+    parser.buildHierarchyMapFixed(projectWBS);
+    const parentStructures = parser.identifyParentStructuresFixed(projectWBS);
+    
+    const selectedProject = analysisResult.availableProjects.find(p => p.proj_id === projectId);
+    const rootElement = projectWBS.find(el => !el.parent_wbs_id || el.parent_wbs_id === '');
+    
+    const projectInfo = {
+      projectId: projectId,
+      projectName: rootElement?.wbs_name || selectedProject?.project_name || `Project ${projectId}`,
+      projectCode: selectedProject?.project_code || rootElement?.wbs_short_name || '',
+      rootWbsId: rootElement?.wbs_id || null,
+      totalElements: projectWBS.length,
+      planStartDate: selectedProject?.plan_start_date,
+      planEndDate: selectedProject?.plan_end_date
+    };
+    
+    parser.validateResults(projectWBS, parentStructures);
+    
+    console.log(`✅ Project processing complete: ${projectWBS.length} elements processed`);
+    
+    return {
+      selectedProject: selectedProject,
+      wbsElements: projectWBS,
+      hierarchy: parser.wbsHierarchy,
+      parentStructures: parentStructures,
+      projectInfo: projectInfo,
+      totalElements: projectWBS.length
+    };
+    
+  } catch (error) {
+    console.error('🚫 Project processing failed:', error);
+    throw error;
+  }
+};
+
+// ============================================================================
+// HELPER FUNCTIONS FOR MULTI-PROJECT SUPPORT
+// ============================================================================
+
+function extractTablesFromXER(content) {
+  console.log('🔍 ENHANCED: Extracting PROJECT and PROJWBS tables from XER format');
+  
+  const lines = content.split('\n');
+  const projectTable = [];
+  const projwbsTable = [];
+  
+  let currentTable = null;
+  let currentHeaders = [];
+  
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    
+    if (line === '%T\tPROJECT') {
+      currentTable = 'PROJECT';
+      console.log(`📍 Found PROJECT table at line ${i + 1}`);
+      continue;
+    } else if (line === '%T\tPROJWBS') {
+      currentTable = 'PROJWBS';
+      console.log(`📍 Found PROJWBS table at line ${i + 1}`);
+      continue;
+    }
+    
+    if (currentTable && line.startsWith('%F\t')) {
+      currentHeaders = line.substring(3).split('\t');
+      console.log(`📋 ${currentTable} headers: ${currentHeaders.length} columns`);
+      continue;
+    }
+    
+    if (currentTable && line.startsWith('%R\t')) {
+      const values = line.substring(3).split('\t');
+      const record = {};
+      
+      currentHeaders.forEach((header, index) => {
+        record[header] = values[index] || null;
+      });
+      
+      if (currentTable === 'PROJECT' && record.proj_id) {
+        projectTable.push(record);
+      } else if (currentTable === 'PROJWBS' && record.wbs_id && record.wbs_name) {
+        projwbsTable.push(record);
+      }
+      continue;
+    }
+    
+    if (currentTable && line.startsWith('%T\t') && 
+        !line.includes('PROJECT') && !line.includes('PROJWBS')) {
+      currentTable = null;
+      currentHeaders = [];
+    }
+  }
+  
+  console.log(`✅ ENHANCED: Extracted ${projectTable.length} PROJECT records`);
+  console.log(`✅ ENHANCED: Extracted ${projwbsTable.length} PROJWBS records`);
+  
+  return { projectTable, projwbsTable };
+}
+
+async function extractPROJWBSFromFile(file) {
+  console.log('🔍 Processing CSV/Excel format');
+  
+  const fileName = file.name.toLowerCase();
+  
+  if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) {
+    return await extractFromExcel(file);
+  } else if (fileName.endsWith('.csv')) {
+    return await extractFromCSV(file);
+  } else {
+    throw new Error('Unsupported file format. Please use .xer, .csv, .xlsx, or .xls files.');
+  }
+}
+
+async function extractFromExcel(file) {
+  try {
+    let data;
+    
+    if (typeof window !== 'undefined' && window.fs) {
+      data = await window.fs.readFile(file.name);
+    } else {
+      data = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => resolve(new Uint8Array(e.target.result));
+        reader.onerror = (e) => reject(new Error('Failed to read file as ArrayBuffer'));
+        reader.readAsArrayBuffer(file);
+      });
+    }
+    
+    const XLSX = await import('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js');
+    
+    const workbook = XLSX.read(data, { 
+      type: 'array',
+      cellStyles: true,
+      cellFormulas: true,
+      cellDates: true
+    });
+    
+    const sheetName = workbook.SheetNames[0];
+    const worksheet = workbook.Sheets[sheetName];
+    const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+    
+    if (jsonData.length < 2) {
+      throw new Error('Excel file appears to be empty or has no data rows');
+    }
+    
+    const headers = jsonData[0];
+    const rows = jsonData.slice(1);
+    
+    const records = rows.map(row => {
+      const record = {};
+      headers.forEach((header, index) => {
+        record[header] = row[index] || null;
+      });
+      return record;
+    }).filter(record => record.wbs_id && record.wbs_name);
+    
+    console.log(`✅ Extracted ${records.length} records from Excel file`);
+    return records;
+    
+  } catch (error) {
+    console.error('Excel processing error:', error);
+    throw new Error(`Failed to process Excel file: ${error.message}`);
+  }
+}
+
+async function extractFromCSV(file) {
+  try {
+    const content = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => resolve(e.target.result);
+      reader.onerror = (e) => reject(new Error('Failed to read file'));
+      reader.readAsText(file);
+    });
+    
+    const delimiter = detectCSVDelimiter(content);
+    console.log(`📊 CSV delimiter detected: "${delimiter}"`);
+    
+    const lines = content.split('\n');
+    const headers = lines[0].split(delimiter);
+    const rows = lines.slice(1);
+    
+    const records = rows.map(line => {
+      const values = line.split(delimiter);
+      const record = {};
+      headers.forEach((header, index) => {
+        record[header.trim()] = values[index] ? values[index].trim() : null;
+      });
+      return record;
+    }).filter(record => record.wbs_id && record.wbs_name);
+    
+    console.log(`✅ Extracted ${records.length} valid CSV records`);
+    return records;
+    
+  } catch (error) {
+    console.error('CSV processing error:', error);
+    throw new Error(`Failed to process CSV file: ${error.message}`);
+  }
+}
+
+function detectCSVDelimiter(content) {
+  const firstLine = content.split('\n')[0];
+  if (firstLine.includes('\t')) return '\t';
+  if (firstLine.includes(';')) return ';';
+  return ',';
+}
+
+function autoDetectProjectId(projwbsData) {
+  if (projwbsData.length === 0) return 'PROJECT_1';
+  
+  const projectCounts = {};
+  projwbsData.forEach(record => {
+    const projId = record.proj_id || 'PROJECT_1';
+    projectCounts[projId] = (projectCounts[projId] || 0) + 1;
+  });
+  
+  const mainProjectId = Object.keys(projectCounts).reduce((a, b) => 
+    projectCounts[a] > projectCounts[b] ? a : b
+  );
+  
+  console.log(`🎯 Auto-detected project ID: ${mainProjectId} (${projectCounts[mainProjectId]} elements)`);
+  return mainProjectId;
+}
+
+function extractAvailableProjectsFromData(projectTable, projwbsData) {
+  console.log('🔍 Extracting available projects with WBS counts');
+  
+  const projectWBSCounts = {};
+  projwbsData.forEach(wbs => {
+    const projId = wbs.proj_id;
+    if (projId) {
+      projectWBSCounts[projId] = (projectWBSCounts[projId] || 0) + 1;
+    }
+  });
+  
+  const availableProjects = projectTable
+    .filter(project => project.project_flag === 'Y' && projectWBSCounts[project.proj_id] > 0)
+    .map(project => {
+      const wbsCount = projectWBSCounts[project.proj_id] || 0;
+      
+      const rootWBS = projwbsData.find(wbs => 
+        wbs.proj_id === project.proj_id && 
+        (!wbs.parent_wbs_id || wbs.parent_wbs_id === '')
+      );
+      
+      return {
+        proj_id: project.proj_id,
+        project_name: rootWBS?.wbs_name || project.proj_short_name || `Project ${project.proj_id}`,
+        project_code: project.proj_short_name || '',
+        wbs_element_count: wbsCount,
+        plan_start_date: project.plan_start_date,
+        plan_end_date: project.plan_end_date,
+        project_flag: project.project_flag
+      };
+    })
+    .sort((a, b) => b.wbs_element_count - a.wbs_element_count);
+  
+  console.log('🎯 Available Projects:');
+  availableProjects.forEach(project => {
+    console.log(`   📊 ${project.proj_id}: "${project.project_name}" (${project.wbs_element_count} elements)`);
+  });
+  
+  return availableProjects;
+}
