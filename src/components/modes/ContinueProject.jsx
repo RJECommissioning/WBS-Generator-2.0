@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { Upload, CheckCircle, Clock, Building2, AlertTriangle } from 'lucide-react';
+import { getAvailableProjects, processSelectedProject } from '../utils/xerParser';
 
 const ProjectSelectionUI = () => {
   const [step, setStep] = useState('upload');
