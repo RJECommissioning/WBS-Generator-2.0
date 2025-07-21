@@ -1,3 +1,6 @@
+// src/components/modes/ContinueProject.jsx
+// Complete file with manual selection and state timing fixes
+
 import React, { useState, useRef } from 'react';
 import { Upload, CheckCircle, Clock, Building2, AlertTriangle, Plus } from 'lucide-react';
 import { getAvailableProjects, processSelectedProject } from '../utils/xerParser';
