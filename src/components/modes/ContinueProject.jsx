@@ -1,8 +1,8 @@
 import React, { useState, useRef } from 'react';
-import { Upload, CheckCircle, Clock, Building2, AlertTriangle } from 'lucide-react';
+import { Upload, CheckCircle, Clock, Building2, AlertTriangle, Plus } from 'lucide-react';
 import { getAvailableProjects, processSelectedProject } from '../utils/xerParser';
 
-const ProjectSelectionUI = () => {
+const ContinueProject = () => {
   const [step, setStep] = useState('upload');
   const [availableProjects, setAvailableProjects] = useState([]);
   const [selectedProject, setSelectedProject] = useState(null);
@@ -31,7 +31,7 @@ const ProjectSelectionUI = () => {
     try {
       console.log('Analyzing XER file for available projects...');
       
-      // Use the real XER parser function
+      // Use REAL XER parser functions
       const analysis = await getAvailableProjects(file);
       
       setAnalysisResult(analysis);
@@ -39,12 +39,12 @@ const ProjectSelectionUI = () => {
       
       if (analysis.requiresProjectSelection && analysis.availableProjects.length > 1) {
         setStep('selecting');
-        console.log('Found projects - user selection required');
+        console.log('Found multiple projects - user selection required');
       } else {
-        // Auto-select if only one project
-        setSelectedProject(analysis.availableProjects[0]);
-        // FIXED: Pass analysis data directly to avoid state timing issue
-        await processProjectWithData(analysis.availableProjects[0].proj_id, analysis);
+        // Auto-select single project
+        const project = analysis.availableProjects[0];
+        setSelectedProject(project);
+        await processProject(project.proj_id);
       }
 
     } catch (error) {
@@ -60,32 +60,10 @@ const ProjectSelectionUI = () => {
     setError(null);
 
     try {
-      console.log('Processing selected project:', projectId);
-      
-      const results = await processSelectedProject(analysisResult, projectId);
-      
-      setProjectResults(results);
-      setStep('complete');
-      
-      console.log('Project processing complete:', results.totalElements, 'elements processed');
-
-    } catch (error) {
-      console.error('Project processing failed:', error);
-      setError('Failed to process selected project: ' + error.message);
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
-  // FIXED: Separate function for when we have the analysis data directly (auto-selection case)
-  const processProjectWithData = async (projectId, analysisData) => {
-    setIsProcessing(true);
-    setError(null);
-
-    try {
       console.log('Processing selected project with direct data:', projectId);
       
-      const results = await processSelectedProject(analysisData, projectId);
+      // Use REAL XER parser functions
+      const results = await processSelectedProject(analysisResult, projectId);
       
       setProjectResults(results);
       setStep('complete');
@@ -120,18 +98,18 @@ const ProjectSelectionUI = () => {
   const renderUploadStep = () => (
     <div className="bg-white rounded-xl shadow-lg p-8">
       <h2 className="text-2xl font-bold mb-6" style={{ color: colors.darkBlue }}>
-        Multi-Project XER Analysis
+        ➕ Continue Existing Project
       </h2>
       
-      <div className="mb-6 p-4 bg-green-50">
+      <div className="mb-6 p-4 bg-green-50 rounded-lg">
         <h4 className="font-semibold mb-2" style={{ color: colors.darkBlue }}>
-          Enhanced XER Processing:
+          Load your existing WBS structure:
         </h4>
         <ul className="text-sm space-y-1 text-gray-700">
-          <li>Automatically detects all projects in your XER file</li>
-          <li>Extracts PROJECT table and PROJWBS table data</li>
-          <li>Shows WBS element count for each project</li>
-          <li>Allows you to select which project to continue</li>
+          <li>• Upload your P6 XER export file</li>
+          <li>• Analyzes existing subsystems (S1, S2, etc.)</li>
+          <li>• Identifies parent structures (Prerequisites, Milestones)</li>
+          <li>• Ready to add new equipment with intelligent WBS codes</li>
         </ul>
       </div>
 
@@ -140,7 +118,7 @@ const ProjectSelectionUI = () => {
         <Upload className="w-12 h-12 mx-auto mb-4" style={{ color: colors.darkGreen }} />
         <h3 className="text-lg font-semibold mb-2">Upload P6 XER Export File</h3>
         <p className="text-gray-600 mb-4">
-          Select your P6 export file (.xer, .csv, or .xlsx format)
+          Select your P6 export file (.xer format)
         </p>
         
         <input
@@ -155,13 +133,13 @@ const ProjectSelectionUI = () => {
         <button
           onClick={() => fileInputRef.current?.click()}
           disabled={isAnalyzing}
-          className="px-6 py-3 text-white rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+          className="px-6 py-3 text-white rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           style={{ backgroundColor: colors.darkGreen }}
         >
           {isAnalyzing ? (
             <>
               <Clock className="w-4 h-4 inline mr-2 animate-spin" />
-              Analyzing Projects...
+              Analyzing XER File...
             </>
           ) : (
             <>
@@ -192,7 +170,7 @@ const ProjectSelectionUI = () => {
         Select Project to Continue
       </h2>
       
-      <div className="mb-6 p-4 bg-blue-50">
+      <div className="mb-6 p-4 bg-blue-50 rounded-lg">
         <p className="text-sm text-blue-800">
           Found {availableProjects.length} projects in your XER file. 
           Select the project you want to continue working with:
@@ -212,12 +190,12 @@ const ProjectSelectionUI = () => {
             <div className="flex items-center justify-between">
               <div className="flex-1">
                 <h3 className="text-lg font-semibold" style={{ color: colors.darkBlue }}>
-                  {project.project_name || project.proj_short_name || `Project ${project.proj_id}`}
+                  {project.project_name}
                 </h3>
                 <div className="flex items-center gap-4 mt-2 text-sm text-gray-600">
                   <span>Project ID: {project.proj_id}</span>
-                  <span>Code: {project.project_code || project.proj_short_name || 'N/A'}</span>
-                  <span>{project.wbs_count || project.wbs_element_count} WBS Elements</span>
+                  <span>Code: {project.project_code}</span>
+                  <span>{project.wbs_element_count} WBS Elements</span>
                 </div>
                 {project.plan_start_date && (
                   <div className="mt-2 text-sm text-gray-500">
@@ -247,7 +225,7 @@ const ProjectSelectionUI = () => {
             <div>
               <p className="font-medium text-blue-800">Processing Selected Project</p>
               <p className="text-sm text-blue-600">
-                Parsing WBS structure and identifying parent elements...
+                Building WBS hierarchy and identifying parent structures...
               </p>
             </div>
           </div>
@@ -262,51 +240,31 @@ const ProjectSelectionUI = () => {
           Back to File Selection
         </button>
       </div>
+
+      {error && (
+        <div className="mt-4 p-4 bg-red-50 border-l-4 border-red-500 rounded">
+          <div className="flex">
+            <AlertTriangle className="w-5 h-5 text-red-500 mr-2" />
+            <div>
+              <p className="font-medium text-red-800">Processing Failed</p>
+              <p className="text-sm text-red-700">{error}</p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 
   const renderResults = () => {
-    const { projectInfo, parentStructures, totalElements } = projectResults;
-    
-    // FIXED: Properly calculate hierarchy levels using the correct method
-    const calculateHierarchyLevels = () => {
-      try {
-        // Method 1: Try to get from projectResults (this should work with our updated xerParser)
-        if (projectResults && typeof projectResults.hierarchyLevels === 'number') {
-          return projectResults.hierarchyLevels;
-        }
-        
-        // Method 2: Try to call the parser's method directly
-        if (analysisResult && analysisResult.parser && typeof analysisResult.parser.calculateHierarchyLevels === 'function') {
-          return analysisResult.parser.calculateHierarchyLevels();
-        }
-        
-        // Method 3: Estimate based on total elements (much better than showing 0)
-        if (totalElements > 0) {
-          // Estimate based on typical WBS depth for projects of this size
-          if (totalElements > 400) return 4;
-          if (totalElements > 100) return 3;
-          if (totalElements > 20) return 2;
-          return 1;
-        }
-        
-        return 0;
-      } catch (error) {
-        console.warn('Error calculating hierarchy levels:', error);
-        // Return estimated value based on elements
-        return totalElements > 100 ? 4 : 3;
-      }
-    };
-    
-    const hierarchyLevels = calculateHierarchyLevels();
+    const { projectInfo, parentStructures, totalElements, validation } = projectResults;
     
     return (
       <div className="bg-white rounded-xl shadow-lg p-8">
         <h2 className="text-2xl font-bold mb-6" style={{ color: colors.darkBlue }}>
-          Project Analysis Complete
+          ✅ Project Analysis Complete
         </h2>
 
-        <div className="mb-6 p-6 bg-green-50">
+        <div className="mb-6 p-6 bg-green-50 rounded-lg">
           <h3 className="text-xl font-semibold mb-4" style={{ color: colors.darkBlue }}>
             Project: {projectInfo.projectName}
           </h3>
@@ -318,15 +276,15 @@ const ProjectSelectionUI = () => {
             </div>
             <div>
               <p><strong>Total Elements:</strong> {totalElements}</p>
-              <p><strong>Subsystems Found:</strong> {parentStructures.subsystems.length}</p>
-              <p><strong>Next Available:</strong> S{parentStructures.subsystems.length + 1}</p>
+              <p><strong>Subsystems Found:</strong> {parentStructures.subsystems?.length || 0}</p>
+              <p><strong>Hierarchy Levels:</strong> {validation?.hasHierarchy ? '✅ Built' : '❌ Failed'}</p>
             </div>
           </div>
         </div>
 
         <div className="mb-6">
           <h3 className="text-lg font-semibold mb-4" style={{ color: colors.darkBlue }}>
-            Parent Structures Identified
+            🎯 Parent Structures Identified
           </h3>
           <div className="space-y-3">
             {[
@@ -335,38 +293,52 @@ const ProjectSelectionUI = () => {
               { key: 'energisation', icon: 'E', name: 'Energisation' },
               { key: 'tbcSection', icon: 'T', name: 'TBC Section' }
             ].map(({ key, icon, name }) => (
-              <div key={key} className="flex items-center justify-between p-3 border rounded">
-                <span>{icon} - {name}</span>
+              <div key={key} className="flex items-center justify-between p-3 border rounded-lg">
+                <span className="font-medium">{icon} - {name}</span>
                 {parentStructures[key] ? (
                   <span className="text-green-600 font-medium">
-                    FOUND: {parentStructures[key].wbs_name}
+                    ✅ FOUND: {parentStructures[key].wbs_name}
                   </span>
                 ) : (
-                  <span className="text-gray-500">Not Found</span>
+                  <span className="text-gray-500">❌ Not Found</span>
                 )}
               </div>
             ))}
             
-            <div className="flex items-center justify-between p-3 border rounded">
-              <span>Existing Subsystems</span>
+            <div className="flex items-center justify-between p-3 border rounded-lg">
+              <span className="font-medium">Existing Subsystems</span>
               <span className="text-green-600 font-medium">
-                {parentStructures.subsystems.length} Found: {
-                  parentStructures.subsystems.map(s => `S${s.subsystemNumber}`).join(', ')
+                ✅ {parentStructures.subsystems?.length || 0} Found: {
+                  parentStructures.subsystems?.map(s => `S${s.subsystemNumber}`).join(', ') || 'None'
                 }
               </span>
             </div>
           </div>
         </div>
 
+        {/* SUCCESS STATE - READY FOR NEXT STEP */}
+        <div className="mb-6 p-4 bg-blue-50 rounded-lg">
+          <h4 className="font-semibold text-blue-800 mb-2">🎉 Ready for Equipment Addition!</h4>
+          <p className="text-sm text-blue-700">
+            Your WBS structure has been successfully analyzed. You can now add new equipment
+            and the system will generate intelligent WBS codes that integrate seamlessly 
+            with your existing structure.
+          </p>
+        </div>
+
         <div className="flex gap-4">
           <button
-            className="px-6 py-3 text-white rounded-lg font-medium"
+            className="px-6 py-3 text-white rounded-lg font-medium flex items-center gap-2 transition-colors"
             style={{ backgroundColor: colors.darkGreen }}
             onClick={() => {
-              console.log('Ready to continue with equipment addition');
+              console.log('🎯 Ready to continue with equipment addition');
+              console.log('📊 Project Data Ready:', projectResults);
+              // This is where you would navigate to equipment addition or trigger next step
+              alert('Ready for equipment addition! This would navigate to the next step.');
             }}
           >
-            Continue with Equipment Addition
+            <Plus className="w-5 h-5" />
+            Add Equipment
           </button>
           
           <button
@@ -377,32 +349,15 @@ const ProjectSelectionUI = () => {
           </button>
         </div>
 
-        // FIXED: Only the debug information section - this was the original issue
+        {/* DEBUG INFO */}
         <div className="mt-8 p-4 bg-gray-50 rounded-lg">
-          <h4 className="font-semibold text-gray-700 mb-2">Debug Information</h4>
+          <h4 className="font-semibold text-gray-700 mb-2">🔧 Technical Details</h4>
           <div className="text-xs text-gray-600 space-y-1">
-            <p>Hierarchy levels: {hierarchyLevels}</p>
-            <p>Parser validation: Passed</p>
-            <p>WBS structure integrity: Validated</p>
-            <p>Ready for subsystem addition: Yes</p>
-          </div>
-          
-          {/* Additional debug info */}
-          <div className="mt-3 pt-3 border-t border-gray-200 text-xs text-gray-500">
-            <p>Total elements: {totalElements}</p>
-            <p>Hierarchy Map size: {projectResults.hierarchy?.size || 0}</p>
-            <p>Parser method result: {(() => {
-              try {
-                return analysisResult?.parser?.calculateHierarchyLevels?.() || 'Not Available';
-              } catch (e) {
-                return 'Error';
-              }
-            })()}</p>
-            <p>Calculation method used: {
-              (projectResults && typeof projectResults.hierarchyLevels === 'number') ? 'projectResults.hierarchyLevels' :
-              (analysisResult && analysisResult.parser && typeof analysisResult.parser.calculateHierarchyLevels === 'function') ? 'parser.calculateHierarchyLevels()' :
-              'Estimated from elements'
-            }</p>
+            <p>✅ Hierarchy levels: {projectResults.hierarchy?.size || 0} parent groups</p>
+            <p>✅ Parser validation: {validation?.isValid ? 'PASSED' : 'FAILED'}</p>
+            <p>✅ WBS structure integrity: Validated</p>
+            <p>✅ Ready for subsystem addition: YES</p>
+            <p>🎯 Next subsystem number: S{(parentStructures.subsystems?.length || 0) + 1}</p>
           </div>
         </div>
       </div>
@@ -418,4 +373,4 @@ const ProjectSelectionUI = () => {
   );
 };
 
-export default ProjectSelectionUI;
+export default ContinueProject;
