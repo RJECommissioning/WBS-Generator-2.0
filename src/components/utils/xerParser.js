@@ -1,5 +1,6 @@
 // src/components/utils/xerParser.js
 // Complete file with validation fix and enhanced project debugging
+// UPDATED: Added analyzeXERFile wrapper for WBSGenerator.jsx compatibility
 
 // ============================================================================
 // ENHANCED XER PARSER CLASS
@@ -52,14 +53,15 @@ export class XERParser {
       this.projectInfo = this.extractProjectInfo(projectWBS);
       
       // 8. Validation and debugging
-      this.validateResults(projectWBS, parentStructures);
+      const validation = this.validateResults(projectWBS, parentStructures);
       
       return {
         wbsElements: projectWBS,
         hierarchy: this.wbsHierarchy,
         parentStructures: parentStructures,
         projectInfo: this.projectInfo,
-        totalElements: projectWBS.length
+        totalElements: projectWBS.length,
+        validation: validation
       };
       
     } catch (error) {
@@ -412,10 +414,13 @@ export class XERParser {
     }
     
     const validation = {
+      isValid: true,
       hasRootElement: !!this.projectInfo.rootWbsId,
       hasHierarchy: this.wbsHierarchy.size > 0,
       hasParentStructures: Object.values(parentStructures).some(v => v !== null && (!Array.isArray(v) || v.length > 0)),
-      totalElements: projectWBS.length
+      totalElements: projectWBS.length,
+      errors: [],
+      warnings: []
     };
     
     console.log('📊 Validation Results:');
@@ -429,11 +434,56 @@ export class XERParser {
       console.warn('   1. Non-standard WBS naming conventions');
       console.warn('   2. File format issues');
       console.warn('   3. Missing required WBS sections');
+      validation.warnings.push('No standard parent structures detected');
     }
     
     return validation;
   }
 }
+
+// ============================================================================
+// COMPATIBILITY WRAPPER FUNCTIONS FOR WBSGenerator.jsx
+// ============================================================================
+
+/**
+ * Main analysis function that WBSGenerator.jsx expects
+ * This wraps the existing XER parsing functionality
+ */
+export const analyzeXERFile = async (file) => {
+  console.log('🎯 analyzeXERFile wrapper called - using existing XER parser');
+  
+  try {
+    const parser = new XERParser();
+    const results = await parser.parseXERFile(file);
+    
+    // Add summary with next subsystem number
+    const summary = {
+      projectName: results.projectInfo.projectName,
+      totalElements: results.totalElements,
+      nextSubsystemNumber: findNextSubsystemNumber(results.parentStructures.subsystems),
+      validationPassed: results.validation.isValid
+    };
+    
+    return {
+      ...results,
+      summary: summary
+    };
+    
+  } catch (error) {
+    console.error('🚫 analyzeXERFile wrapper failed:', error);
+    throw error;
+  }
+};
+
+/**
+ * Helper function to find next subsystem number
+ */
+const findNextSubsystemNumber = (subsystems) => {
+  if (!subsystems || subsystems.length === 0) return 1;
+  
+  const numbers = subsystems.map(s => s.subsystemNumber).filter(n => !isNaN(n));
+  return numbers.length > 0 ? Math.max(...numbers) + 1 : 1;
+};
 
 // ============================================================================
 // ENHANCED MULTI-PROJECT FUNCTIONS
