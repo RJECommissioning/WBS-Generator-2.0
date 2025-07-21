@@ -37,14 +37,12 @@ const ContinueProject = () => {
       setAnalysisResult(analysis);
       setAvailableProjects(analysis.availableProjects);
       
-      if (analysis.requiresProjectSelection && analysis.availableProjects.length > 1) {
+      // ALWAYS require manual project selection (no auto-selection)
+      if (analysis.availableProjects.length > 0) {
         setStep('selecting');
-        console.log('Found multiple projects - user selection required');
+        console.log(`Found ${analysis.availableProjects.length} projects - manual selection required`);
       } else {
-        // Auto-select single project
-        const project = analysis.availableProjects[0];
-        setSelectedProject(project);
-        await processProject(project.proj_id);
+        setError('No projects found in XER file');
       }
 
     } catch (error) {
@@ -55,15 +53,23 @@ const ContinueProject = () => {
     }
   };
 
-  const processProject = async (projectId) => {
+  // FIX: Modified to accept analysis parameter to avoid state timing issues
+  const processProject = async (projectId, analysis = null) => {
     setIsProcessing(true);
     setError(null);
 
     try {
       console.log('Processing selected project with direct data:', projectId);
       
+      // FIX: Use passed analysis or state (for button clicks)
+      const analysisToUse = analysis || analysisResult;
+      
+      if (!analysisToUse) {
+        throw new Error('Analysis result is null - state timing issue');
+      }
+      
       // Use REAL XER parser functions
-      const results = await processSelectedProject(analysisResult, projectId);
+      const results = await processSelectedProject(analysisToUse, projectId);
       
       setProjectResults(results);
       setStep('complete');
@@ -80,7 +86,7 @@ const ContinueProject = () => {
 
   const handleProjectSelect = (project) => {
     setSelectedProject(project);
-    processProject(project.proj_id);
+    processProject(project.proj_id); // This uses state since user clicked, state is available
   };
 
   const handleStartOver = () => {
@@ -167,13 +173,14 @@ const ContinueProject = () => {
   const renderProjectSelection = () => (
     <div className="bg-white rounded-xl shadow-lg p-8">
       <h2 className="text-2xl font-bold mb-6" style={{ color: colors.darkBlue }}>
-        Select Project to Continue
+        📊 Select Project to Continue
       </h2>
       
       <div className="mb-6 p-4 bg-blue-50 rounded-lg">
-        <p className="text-sm text-blue-800">
-          Found {availableProjects.length} projects in your XER file. 
-          Select the project you want to continue working with:
+        <h4 className="font-semibold text-blue-800 mb-2">📊 Available Projects</h4>
+        <p className="text-sm text-blue-700">
+          Found {availableProjects.length} project{availableProjects.length === 1 ? '' : 's'} in your XER file. 
+          Please review the project details and click to select the one you want to continue with:
         </p>
       </div>
 
@@ -181,7 +188,7 @@ const ContinueProject = () => {
         {availableProjects.map((project) => (
           <div
             key={project.proj_id}
-            className="border-2 rounded-lg p-4 cursor-pointer transition-all duration-200 hover:shadow-lg"
+            className="border-2 rounded-lg p-4 cursor-pointer transition-all duration-200 hover:shadow-lg hover:border-blue-300"
             style={{ 
               borderColor: selectedProject?.proj_id === project.proj_id ? colors.darkGreen : '#e5e7eb'
             }}
@@ -192,16 +199,33 @@ const ContinueProject = () => {
                 <h3 className="text-lg font-semibold" style={{ color: colors.darkBlue }}>
                   {project.project_name}
                 </h3>
-                <div className="flex items-center gap-4 mt-2 text-sm text-gray-600">
-                  <span>Project ID: {project.proj_id}</span>
-                  <span>Code: {project.project_code}</span>
-                  <span>{project.wbs_element_count} WBS Elements</span>
+                <div className="grid grid-cols-2 gap-4 mt-2 text-sm text-gray-600">
+                  <div>
+                    <span className="font-medium">Project ID:</span> {project.proj_id}
+                  </div>
+                  <div>
+                    <span className="font-medium">Project Code:</span> {project.project_code}
+                  </div>
+                  <div>
+                    <span className="font-medium">WBS Elements:</span> {project.wbs_element_count}
+                  </div>
+                  <div>
+                    <span className="font-medium">Status:</span> Active
+                  </div>
                 </div>
-                {project.plan_start_date && (
+                {project.plan_start_date && project.plan_end_date && (
                   <div className="mt-2 text-sm text-gray-500">
-                    {project.plan_start_date} - {project.plan_end_date}
+                    <span className="font-medium">Schedule:</span> {project.plan_start_date} - {project.plan_end_date}
                   </div>
                 )}
+                <div className="mt-2">
+                  <span className="inline-block px-2 py-1 text-xs font-medium bg-green-100 text-green-800 rounded mr-2">
+                    Ready for Equipment Addition
+                  </span>
+                  <span className="inline-block px-2 py-1 text-xs font-medium bg-blue-100 text-blue-800 rounded">
+                    Click to Select →
+                  </span>
+                </div>
               </div>
               
               <div className="flex items-center">
