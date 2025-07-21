@@ -1,9 +1,10 @@
 // src/components/modes/ContinueProject.jsx
-// Complete file with manual selection and state timing fixes
+// Complete file with Equipment Addition integration and smart subsystem detection
 
 import React, { useState, useRef } from 'react';
 import { Upload, CheckCircle, Clock, Building2, AlertTriangle, Plus } from 'lucide-react';
 import { getAvailableProjects, processSelectedProject } from '../utils/xerParser';
+import EquipmentAddition from '../shared/EquipmentAddition';
 
 const ContinueProject = () => {
   const [step, setStep] = useState('upload');
@@ -90,6 +91,16 @@ const ContinueProject = () => {
   const handleProjectSelect = (project) => {
     setSelectedProject(project);
     processProject(project.proj_id); // This uses state since user clicked, state is available
+  };
+
+  const handleAddEquipment = () => {
+    console.log('🎯 Starting equipment addition workflow');
+    console.log('📊 Project Data Ready:', projectResults);
+    setStep('equipment');
+  };
+
+  const handleBackToResults = () => {
+    setStep('complete');
   };
 
   const handleStartOver = () => {
@@ -357,12 +368,7 @@ const ContinueProject = () => {
           <button
             className="px-6 py-3 text-white rounded-lg font-medium flex items-center gap-2 transition-colors"
             style={{ backgroundColor: colors.darkGreen }}
-            onClick={() => {
-              console.log('🎯 Ready to continue with equipment addition');
-              console.log('📊 Project Data Ready:', projectResults);
-              // This is where you would navigate to equipment addition or trigger next step
-              alert('Ready for equipment addition! This would navigate to the next step.');
-            }}
+            onClick={handleAddEquipment}
           >
             <Plus className="w-5 h-5" />
             Add Equipment
@@ -396,6 +402,12 @@ const ContinueProject = () => {
       {step === 'upload' && renderUploadStep()}
       {step === 'selecting' && renderProjectSelection()}
       {step === 'complete' && renderResults()}
+      {step === 'equipment' && (
+        <EquipmentAddition 
+          projectResults={projectResults}
+          onBack={handleBackToResults}
+        />
+      )}
     </div>
   );
 };
