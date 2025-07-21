@@ -112,7 +112,58 @@ const WBSGenerator = () => {
     }
   };
 
-// For continue mode with enhanced data
+  // Enhanced WBS structure file upload (for continue/missing modes) with XER support
+  const handleWBSFileUpload = async (event, isForMissingEquipment = false) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      console.log(`🚀 Processing WBS file: ${file.name}`);
+      
+      let wbsData;
+      
+      // Check if it's an XER file and use enhanced processing for continue project mode
+      if (file.name.toLowerCase().endsWith('.xer') && !isForMissingEquipment) {
+        try {
+          // Use existing XER parser
+          const { analyzeXERFile } = await import('./utils/xerParser.js');
+          const xerAnalysis = await analyzeXERFile(file);
+          
+          // Convert to expected format
+          wbsData = {
+            projectName: xerAnalysis.projectInfo?.projectName || xerAnalysis.summary?.projectName || 'Unknown Project',
+            totalElements: xerAnalysis.totalElements || xerAnalysis.wbsElements?.length || 0,
+            wbsNodes: xerAnalysis.wbsElements?.map(element => ({
+              wbs_code: element.wbs_short_name || element.wbs_id,
+              parent_wbs_code: element.parent_wbs_id || null,
+              wbs_name: element.wbs_name,
+              wbs_id: element.wbs_id,
+              is_existing: true
+            })) || [],
+            parentStructures: xerAnalysis.parentStructures,
+            summary: xerAnalysis.summary,
+            originalXERData: xerAnalysis.wbsElements
+          };
+          
+          console.log('✅ XER file processed with existing XER parser');
+        } catch (xerError) {
+          console.warn('XER processing failed, falling back to standard processing:', xerError);
+          wbsData = await processWBSFile(file);
+        }
+      } else {
+        // Use standard Excel/CSV processing
+        wbsData = await processWBSFile(file);
+      }
+      
+      if (isForMissingEquipment) {
+        setMissingEquipmentConfig(prev => ({
+          ...prev,
+          existingWbsNodes: wbsData.wbsNodes,
+          existingProjectName: wbsData.projectName
+        }));
+        console.log('✅ WBS structure loaded for missing equipment mode');
+      } else {
+        // For continue mode with enhanced data
         const loadedState = {
           ...wbsData,
           timestamp: new Date().toISOString()
@@ -142,7 +193,7 @@ const WBSGenerator = () => {
         try {
           // Use existing continue project integration logic
           const { processContinueProjectWBS } = await import('./utils/continueProjectIntegration.js');
-          result = processContinueProjectWBS(data, projectState, projectName);
+          result = await processContinueProjectWBS(data, projectState, projectName);
           console.log('✅ Using existing continue project integration');
         } catch (continueError) {
           console.warn('Continue project integration failed, falling back to standard generation:', continueError);
@@ -891,7 +942,7 @@ const ExportPanel = ({
         </div>
         <div className="text-center p-3 rounded-lg" style={{ backgroundColor: `${rjeColors.darkGreen}20` }}>
           <div className="text-2xl font-bold" style={{ color: rjeColors.darkBlue }}>
-            {projectState?.subsystems.length || 0}
+            {projectState?.subsystems?.length || 0}
           </div>
           <div className="text-sm text-gray-600">Subsystems</div>
         </div>
