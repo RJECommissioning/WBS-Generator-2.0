@@ -43,7 +43,8 @@ const ProjectSelectionUI = () => {
       } else {
         // Auto-select if only one project
         setSelectedProject(analysis.availableProjects[0]);
-        await processProject(analysis.availableProjects[0].proj_id);
+        // FIXED: Pass analysis data directly to avoid state timing issue
+        await processProjectWithData(analysis.availableProjects[0].proj_id, analysis);
       }
 
     } catch (error) {
@@ -62,6 +63,29 @@ const ProjectSelectionUI = () => {
       console.log('Processing selected project:', projectId);
       
       const results = await processSelectedProject(analysisResult, projectId);
+      
+      setProjectResults(results);
+      setStep('complete');
+      
+      console.log('Project processing complete:', results.totalElements, 'elements processed');
+
+    } catch (error) {
+      console.error('Project processing failed:', error);
+      setError('Failed to process selected project: ' + error.message);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // FIXED: Separate function for when we have the analysis data directly (auto-selection case)
+  const processProjectWithData = async (projectId, analysisData) => {
+    setIsProcessing(true);
+    setError(null);
+
+    try {
+      console.log('Processing selected project with direct data:', projectId);
+      
+      const results = await processSelectedProject(analysisData, projectId);
       
       setProjectResults(results);
       setStep('complete');
@@ -353,7 +377,7 @@ const ProjectSelectionUI = () => {
           </button>
         </div>
 
-        {/* FIXED: Only the debug information section - this was the original issue */}
+        // FIXED: Only the debug information section - this was the original issue
         <div className="mt-8 p-4 bg-gray-50 rounded-lg">
           <h4 className="font-semibold text-gray-700 mb-2">Debug Information</h4>
           <div className="text-xs text-gray-600 space-y-1">
