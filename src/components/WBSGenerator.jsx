@@ -1,13 +1,15 @@
 // src/components/WBSGenerator.jsx - Main WBS Generator orchestrator component
 
 import React, { useState, useRef, createContext, useContext } from 'react';
-import { Upload, Download, Settings, Plus, FileText, Zap, ChevronRight, ChevronDown, Eye, EyeOff } from 'lucide-react';
+import { 
+  Upload, Download, Settings, Plus, FileText, Zap, ChevronRight, ChevronDown, 
+  Eye, EyeOff, Layers, CheckCircle, Circle, Folder, FolderOpen, Settings2
+} from 'lucide-react';
 
 // Import utilities
 import { rjeColors, uploadModes, errorMessages, successMessages } from './utils/constants.js';
 import { processEquipmentFile, processWBSFile, exportWBSToCSV, exportProjectState } from './utils/equipmentUtils.js';
 import { generateWBS, generateMissingEquipmentWBS } from './utils/wbsUtils.js';
-import ContinueProject from './modes/ContinueProject.jsx';
 
 // Import the full WBS Tree Visualization component
 import WBSTreeVisualization from './shared/WBSTreeVisualization.jsx';
@@ -110,7 +112,7 @@ const WBSGenerator = () => {
     }
   };
 
-  // Handle WBS structure file upload (for continue/missing modes)
+  // Enhanced WBS structure file upload (for continue/missing modes) with XER support
   const handleWBSFileUpload = async (event, isForMissingEquipment = false) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -118,7 +120,23 @@ const WBSGenerator = () => {
     try {
       console.log(`🚀 Processing WBS file: ${file.name}`);
       
-      const wbsData = await processWBSFile(file);
+      let wbsData;
+      
+      // Check if it's an XER file and use enhanced processing for continue project mode
+      if (file.name.toLowerCase().endsWith('.xer') && !isForMissingEquipment) {
+        try {
+          // Dynamic import of XER processing functionality
+          const { processXERFile } = await import('./utils/continueProjectUtils.js');
+          wbsData = await processXERFile(file);
+          console.log('✅ XER file processed with enhanced continue project logic');
+        } catch (xerError) {
+          console.warn('XER processing failed, falling back to standard processing:', xerError);
+          wbsData = await processWBSFile(file);
+        }
+      } else {
+        // Use standard Excel/CSV processing
+        wbsData = await processWBSFile(file);
+      }
       
       if (isForMissingEquipment) {
         setMissingEquipmentConfig(prev => ({
@@ -128,7 +146,7 @@ const WBSGenerator = () => {
         }));
         console.log('✅ WBS structure loaded for missing equipment mode');
       } else {
-        // For continue mode
+        // For continue mode with enhanced data
         const loadedState = {
           ...wbsData,
           timestamp: new Date().toISOString()
@@ -138,7 +156,7 @@ const WBSGenerator = () => {
         setProjectName(loadedState.projectName);
         setWbsVisualization(loadedState.wbsNodes);
         setWbsOutput(loadedState.wbsNodes);
-        console.log('✅ WBS structure loaded for continue mode');
+        console.log('✅ Enhanced WBS structure loaded for continue mode');
       }
       
     } catch (error) {
@@ -147,12 +165,27 @@ const WBSGenerator = () => {
     }
   };
 
-  // Generate WBS for new/continue modes
+  // Enhanced WBS generation handler with continue project support
   const generateWBSHandler = async (data) => {
     try {
       console.log(`🏗️ Generating WBS - Mode: ${uploadMode}`);
       
-      const result = generateWBS(data, projectName, projectState, uploadMode);
+      let result;
+      
+      if (uploadMode === uploadModes.CONTINUE_PROJECT && projectState) {
+        try {
+          // Use enhanced continue project logic
+          const { generateContinueProjectWBS } = await import('./utils/continueProjectUtils.js');
+          result = generateContinueProjectWBS(data, projectState);
+          console.log('✅ Using enhanced continue project WBS generation');
+        } catch (continueError) {
+          console.warn('Continue project logic failed, falling back to standard generation:', continueError);
+          result = generateWBS(data, projectName, projectState, uploadMode);
+        }
+      } else {
+        // Use existing logic for new projects
+        result = generateWBS(data, projectName, projectState, uploadMode);
+      }
       
       if (uploadMode === uploadModes.NEW_PROJECT) {
         setWbsVisualization(result.allNodes);
@@ -316,6 +349,7 @@ const WBSGenerator = () => {
           handleWBSFileUpload={handleWBSFileUpload}
           handleFileUpload={handleFileUpload}
           isProcessing={isProcessing}
+          rjeColors={rjeColors}
         />
       )}
 
@@ -410,7 +444,285 @@ const StartNewProjectMode = ({ projectName, setProjectName, fileInputRef, handle
   </div>
 );
 
-const ContinueProjectMode = () => <ContinueProject />;
+// Enhanced Continue Project Mode Component with XER Structure Visualization
+const ContinueProjectMode = ({ 
+  projectState, 
+  projectStateInputRef, 
+  handleWBSFileUpload, 
+  handleFileUpload, 
+  isProcessing,
+  rjeColors 
+}) => {
+  const [showStructureDetails, setShowStructureDetails] = useState(true);
+  const [expandedNodes, setExpandedNodes] = useState(new Set(['root', 'subsystems', 'prerequisites']));
+
+  const toggleNode = (nodeId) => {
+    const newExpanded = new Set(expandedNodes);
+    if (newExpanded.has(nodeId)) {
+      newExpanded.delete(nodeId);
+    } else {
+      newExpanded.add(nodeId);
+    }
+    setExpandedNodes(newExpanded);
+  };
+
+  const renderStructureNode = (node, level = 0, nodeId = '') => {
+    const isExpanded = expandedNodes.has(nodeId);
+    const hasChildren = node.children && node.children.length > 0;
+    
+    return (
+      <div key={nodeId} style={{ marginLeft: `${level * 20}px` }}>
+        <div 
+          className="flex items-center py-1 px-2 hover:bg-gray-50 rounded cursor-pointer"
+          onClick={() => hasChildren && toggleNode(nodeId)}
+        >
+          {hasChildren ? (
+            isExpanded ? <ChevronDown className="w-4 h-4 mr-1" /> : <ChevronRight className="w-4 h-4 mr-1" />
+          ) : (
+            <Circle className="w-3 h-3 mr-2 ml-1" style={{ color: rjeColors.mediumGreen }} />
+          )}
+          
+          {level === 0 ? (
+            <Folder className="w-4 h-4 mr-2" style={{ color: rjeColors.darkBlue }} />
+          ) : level === 1 ? (
+            <FolderOpen className="w-4 h-4 mr-2" style={{ color: rjeColors.darkGreen }} />
+          ) : (
+            <Settings2 className="w-3 h-3 mr-2" style={{ color: rjeColors.teal }} />
+          )}
+          
+          <span className="text-sm font-medium">{node.name}</span>
+          {node.count && (
+            <span className="ml-2 px-2 py-0.5 bg-gray-200 text-xs rounded-full">
+              {node.count}
+            </span>
+          )}
+        </div>
+        
+        {hasChildren && isExpanded && (
+          <div className="ml-2">
+            {node.children.map((child, idx) => 
+              renderStructureNode(child, level + 1, `${nodeId}_${idx}`)
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // Process project state into displayable structure
+  const getStructureData = () => {
+    if (!projectState) return null;
+    
+    const structure = {
+      name: projectState.projectName || "Loaded Project",
+      children: [
+        {
+          name: "📋 Prerequisites",
+          count: projectState.parentStructures?.prerequisites ? 1 : 0,
+          children: projectState.parentStructures?.prerequisites ? [{
+            name: `${projectState.parentStructures.prerequisites.wbs_name}`,
+            children: []
+          }] : []
+        },
+        {
+          name: "🏁 Milestones", 
+          count: projectState.parentStructures?.milestones ? 1 : 0,
+          children: projectState.parentStructures?.milestones ? [{
+            name: `${projectState.parentStructures.milestones.wbs_name}`,
+            children: []
+          }] : []
+        },
+        {
+          name: "⚡ Energisation",
+          count: projectState.parentStructures?.energisation ? 1 : 0,
+          children: projectState.parentStructures?.energisation ? [{
+            name: `${projectState.parentStructures.energisation.wbs_name}`,
+            children: []
+          }] : []
+        },
+        {
+          name: "🏗️ Existing Subsystems",
+          count: projectState.parentStructures?.subsystems?.length || 0,
+          children: (projectState.parentStructures?.subsystems || []).map(subsystem => ({
+            name: `${subsystem.element.wbs_name}`,
+            count: subsystem.categories?.length || 0,
+            children: (subsystem.categories || []).map(category => ({
+              name: `${category.element.wbs_name}`,
+              count: category.equipment?.length || 0,
+              children: []
+            }))
+          }))
+        }
+      ]
+    };
+    
+    return structure;
+  };
+
+  const structureData = getStructureData();
+
+  return (
+    <div className="bg-white rounded-xl shadow-lg p-6">
+      <h2 className="text-2xl font-bold mb-6" style={{ color: rjeColors.darkBlue }}>
+        ➕ Continue Existing Project
+      </h2>
+      
+      <div className="mb-6 p-4 rounded-lg" style={{ backgroundColor: rjeColors.darkGreen + '15' }}>
+        <h4 className="font-semibold mb-2" style={{ color: rjeColors.darkBlue }}>
+          What happens next:
+        </h4>
+        <ul className="text-sm space-y-1 text-gray-700">
+          <li>• First, load your existing WBS structure (XER or CSV file)</li>
+          <li>• Then upload additional equipment list</li>
+          <li>• <strong>Required columns:</strong> Subsystem, Parent Equipment Number, Equipment Number, Description, Commissioning (Y/N)</li>
+          <li>• New equipment will be added to existing WBS structure</li>
+          <li>• WBS codes will continue from where you left off</li>
+        </ul>
+      </div>
+
+      {/* Step 1: Load Existing WBS Structure */}
+      <div className="mb-6">
+        <h4 className="font-semibold mb-3" style={{ color: rjeColors.darkBlue }}>
+          Step 1: Load Existing WBS Structure
+        </h4>
+        
+        {!projectState ? (
+          <div className="border-2 border-dashed rounded-lg p-6 text-center" style={{ borderColor: rjeColors.darkGreen }}>
+            <FileText className="w-10 h-10 mx-auto mb-3" style={{ color: rjeColors.darkGreen }} />
+            <p className="text-md font-medium mb-2">Load Existing WBS Structure</p>
+            <p className="text-gray-600 mb-4">XER or CSV file with WBS structure</p>
+            <input
+              ref={projectStateInputRef}
+              type="file"
+              accept=".xer,.csv,.xlsx,.xls"
+              onChange={(e) => handleWBSFileUpload(e, false)}
+              className="hidden"
+            />
+            <button
+              onClick={() => projectStateInputRef.current?.click()}
+              className="px-4 py-2 text-white rounded-lg font-medium"
+              style={{ backgroundColor: rjeColors.darkGreen }}
+            >
+              Load WBS Structure
+            </button>
+          </div>
+        ) : (
+          <div className="border rounded-lg p-4" style={{ borderColor: rjeColors.darkGreen }}>
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center">
+                <CheckCircle className="w-5 h-5 mr-2" style={{ color: rjeColors.darkGreen }} />
+                <span className="font-medium">✅ WBS Structure Loaded Successfully</span>
+              </div>
+              <button
+                onClick={() => setShowStructureDetails(!showStructureDetails)}
+                className="flex items-center text-sm px-3 py-1 rounded-lg"
+                style={{ 
+                  backgroundColor: rjeColors.darkGreen + '20',
+                  color: rjeColors.darkBlue 
+                }}
+              >
+                {showStructureDetails ? <EyeOff className="w-4 h-4 mr-1" /> : <Eye className="w-4 h-4 mr-1" />}
+                {showStructureDetails ? 'Hide' : 'Show'} Details
+              </button>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-3">
+              <div className="bg-gray-50 p-3 rounded-lg">
+                <div className="text-sm text-gray-600">Project Name</div>
+                <div className="font-medium">{projectState.projectName}</div>
+              </div>
+              <div className="bg-gray-50 p-3 rounded-lg">
+                <div className="text-sm text-gray-600">Total Elements</div>
+                <div className="font-medium">{projectState.totalElements || 'Unknown'}</div>
+              </div>
+              <div className="bg-gray-50 p-3 rounded-lg">
+                <div className="text-sm text-gray-600">Existing Subsystems</div>
+                <div className="font-medium">{projectState.parentStructures?.subsystems?.length || 0}</div>
+              </div>
+            </div>
+
+            {/* Enhanced Structure Visualization */}
+            {showStructureDetails && structureData && (
+              <div className="mt-4 border-t pt-4">
+                <h5 className="font-semibold mb-3 flex items-center">
+                  <Layers className="w-4 h-4 mr-2" style={{ color: rjeColors.darkBlue }} />
+                  WBS Structure Overview
+                </h5>
+                <div className="bg-gray-50 p-3 rounded-lg max-h-96 overflow-y-auto">
+                  {renderStructureNode(structureData, 0, 'root')}
+                </div>
+                
+                {/* Next Subsystem Info */}
+                {projectState.summary?.nextSubsystemNumber && (
+                  <div className="mt-3 p-3 rounded-lg" style={{ backgroundColor: rjeColors.mediumGreen + '20' }}>
+                    <div className="text-sm font-medium" style={{ color: rjeColors.darkBlue }}>
+                      🎯 Ready to Add: <span className="font-bold">S{projectState.summary.nextSubsystemNumber}</span>
+                    </div>
+                    <div className="text-xs text-gray-600 mt-1">
+                      New equipment will be organized under this subsystem number
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Step 2: Upload Additional Equipment (Enhanced) */}
+      {projectState && (
+        <div>
+          <h4 className="font-semibold mb-3" style={{ color: rjeColors.darkBlue }}>
+            Step 2: Upload Additional Equipment
+          </h4>
+          <div className="border-2 border-dashed rounded-lg p-8 text-center" style={{ borderColor: rjeColors.darkGreen }}>
+            <Upload className="w-12 h-12 mx-auto mb-4" style={{ color: rjeColors.darkGreen }} />
+            <p className="text-lg font-medium mb-2">Upload Additional Equipment List</p>
+            <p className="text-gray-600 mb-4">Excel (.xlsx) or CSV files supported</p>
+            
+            {/* Equipment file requirements */}
+            <div className="mb-4 p-3 bg-blue-50 rounded-lg text-sm text-left">
+              <div className="font-medium mb-2">📋 Equipment File Requirements:</div>
+              <ul className="list-disc list-inside space-y-1 text-gray-700">
+                <li><strong>Subsystem:</strong> Name of the new subsystem (e.g., "33kV Switchroom 2 - +Z02")</li>
+                <li><strong>Equipment Number:</strong> Unique equipment identifier</li>
+                <li><strong>Description:</strong> Equipment description</li>
+                <li><strong>Commissioning:</strong> Must be "Y" or "TBC" to be included</li>
+                <li><strong>Parent Equipment Number:</strong> Optional parent reference</li>
+              </ul>
+            </div>
+            
+            <input
+              type="file"
+              accept=".csv,.xlsx,.xls"
+              onChange={handleFileUpload}
+              className="hidden"
+              id="continue-file-upload"
+            />
+            <button
+              onClick={() => document.getElementById('continue-file-upload')?.click()}
+              disabled={isProcessing}
+              className="px-6 py-3 text-white rounded-lg font-medium transition-all hover:shadow-lg disabled:opacity-50"
+              style={{ backgroundColor: rjeColors.darkGreen }}
+            >
+              {isProcessing ? (
+                <div className="flex items-center">
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                  Processing Equipment List...
+                </div>
+              ) : (
+                <div className="flex items-center">
+                  <Plus className="w-5 h-5 mr-2" />
+                  Add Equipment to Project
+                </div>
+              )}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
 
 // Missing Equipment Mode Component
 const MissingEquipmentMode = ({ 
