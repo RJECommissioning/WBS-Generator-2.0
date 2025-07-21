@@ -7,6 +7,7 @@ import { Upload, Download, Settings, Plus, FileText, Zap, ChevronRight, ChevronD
 import { rjeColors, uploadModes, errorMessages, successMessages } from './utils/constants.js';
 import { processEquipmentFile, processWBSFile, exportWBSToCSV, exportProjectState } from './utils/equipmentUtils.js';
 import { generateWBS, generateMissingEquipmentWBS } from './utils/wbsUtils.js';
+import ContinueProject from './modes/ContinueProject.jsx';
 
 // Import the full WBS Tree Visualization component
 import WBSTreeVisualization from './shared/WBSTreeVisualization.jsx';
@@ -409,85 +410,7 @@ const StartNewProjectMode = ({ projectName, setProjectName, fileInputRef, handle
   </div>
 );
 
-// Continue Project Mode Component
-const ContinueProjectMode = ({ projectState, projectStateInputRef, handleWBSFileUpload, handleFileUpload, isProcessing }) => (
-  <div className="bg-white rounded-xl shadow-lg p-6">
-    <h2 className="text-2xl font-bold mb-6" style={{ color: rjeColors.darkBlue }}>
-      ➕ Continue Existing Project
-    </h2>
-    
-    <div className="mb-6 p-4 rounded-lg" style={{ backgroundColor: rjeColors.darkGreen + '15' }}>
-      <h4 className="font-semibold mb-2" style={{ color: rjeColors.darkBlue }}>
-        What happens next:
-      </h4>
-      <ul className="text-sm space-y-1 text-gray-700">
-        <li>• First, load your existing WBS structure (CSV or Excel file)</li>
-        <li>• Then upload additional equipment list</li>
-        <li>• <strong>Required columns:</strong> Subsystem, Parent Equipment Number, Equipment Number, Description, Commissioning (Y/N)</li>
-        <li>• New equipment will be added to existing WBS structure</li>
-        <li>• WBS codes will continue from where you left off</li>
-      </ul>
-    </div>
-
-    <div className="mb-6">
-      <h4 className="font-semibold mb-3" style={{ color: rjeColors.darkBlue }}>
-        Step 1: Load Existing WBS Structure
-      </h4>
-      <div className="border-2 border-dashed rounded-lg p-6 text-center" style={{ borderColor: rjeColors.darkGreen }}>
-        <FileText className="w-10 h-10 mx-auto mb-3" style={{ color: rjeColors.darkGreen }} />
-        <p className="text-md font-medium mb-2">Load Existing WBS Structure</p>
-        <p className="text-gray-600 mb-4">CSV or Excel (.xlsx) file with WBS structure</p>
-        <input
-          ref={projectStateInputRef}
-          type="file"
-          accept=".csv,.xlsx,.xls"
-          onChange={(e) => handleWBSFileUpload(e, false)}
-          className="hidden"
-        />
-        <button
-          onClick={() => projectStateInputRef.current?.click()}
-          className="px-4 py-2 text-white rounded-lg font-medium"
-          style={{ backgroundColor: rjeColors.darkGreen }}
-        >
-          Load WBS Structure
-        </button>
-        {projectState && (
-          <div className="mt-3 text-sm text-green-600">
-            ✅ Loaded: {projectState.projectName} - {projectState.subsystems.length} subsystems
-          </div>
-        )}
-      </div>
-    </div>
-
-    {projectState && (
-      <div>
-        <h4 className="font-semibold mb-3" style={{ color: rjeColors.darkBlue }}>
-          Step 2: Upload Additional Equipment
-        </h4>
-        <div className="border-2 border-dashed rounded-lg p-8 text-center" style={{ borderColor: rjeColors.darkGreen }}>
-          <Upload className="w-12 h-12 mx-auto mb-4" style={{ color: rjeColors.darkGreen }} />
-          <p className="text-lg font-medium mb-2">Upload Additional Equipment List</p>
-          <p className="text-gray-600 mb-4">Excel (.xlsx) or CSV files supported</p>
-          <input
-            type="file"
-            accept=".csv,.xlsx,.xls"
-            onChange={handleFileUpload}
-            className="hidden"
-            id="continue-file-upload"
-          />
-          <button
-            onClick={() => document.getElementById('continue-file-upload')?.click()}
-            disabled={isProcessing}
-            className="px-6 py-3 text-white rounded-lg font-medium transition-all hover:shadow-lg disabled:opacity-50"
-            style={{ backgroundColor: rjeColors.darkGreen }}
-          >
-            {isProcessing ? 'Processing Equipment List...' : 'Choose Equipment File'}
-          </button>
-        </div>
-      </div>
-    )}
-  </div>
-);
+const ContinueProjectMode = () => <ContinueProject />;
 
 // Missing Equipment Mode Component
 const MissingEquipmentMode = ({ 
