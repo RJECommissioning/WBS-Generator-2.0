@@ -689,4 +689,385 @@ export const analyzeXERFile = async (file) => {
     console.error('🚫 FIXED: XER Analysis failed:', error);
     throw error;
   }
+  // ============================================================================
+// EXPORT FUNCTIONS FOR MULTI-PROJECT SUPPORT
+// Add these functions to the END of your existing xerParser.js file
+// ============================================================================
+
+/**
+ * Quick function to analyze XER file and get available projects
+ */
+export const getAvailableProjects = async (file) => {
+  const parser = new XERParser();
+  console.log('🚀 Starting XER file analysis for project discovery');
+  
+  try {
+    // Enhanced analysis with multi-project detection
+    const content = await parser.readFile(file);
+    console.log(`📄 File content length: ${content.length} characters`);
+    
+    // Determine file format
+    const isXER = parser.detectXERFormat(content);
+    console.log(`📋 File format detected: ${isXER ? 'XER' : 'CSV/Excel'}`);
+    
+    let projwbsData;
+    let projectTable = [];
+    
+    if (isXER) {
+      // Extract both PROJECT and PROJWBS tables from XER
+      const { projectTable: projects, projwbsTable } = extractTablesFromXER(content);
+      projectTable = projects;
+      projwbsData = projwbsTable;
+    } else {
+      // Handle CSV/Excel format (assume single project)
+      projwbsData = await extractPROJWBSFromFile(file);
+      
+      // Create virtual project entry
+      const projectId = autoDetectProjectId(projwbsData);
+      projectTable = [{
+        proj_id: projectId,
+        proj_short_name: `Project_${projectId}`,
+        project_flag: 'Y'
+      }];
+    }
+    
+    // Extract available projects
+    const availableProjects = extractAvailableProjectsFromData(projectTable, projwbsData);
+    
+    console.log(`✅ XER Analysis Complete: ${availableProjects.length} projects found`);
+    
+    return {
+      parser: parser,
+      availableProjects: availableProjects,
+      totalProjects: availableProjects.length,
+      totalWBSElements: projwbsData.length,
+      requiresProjectSelection: availableProjects.length > 1,
+      projwbsData: projwbsData // Store for later use
+    };
+    
+  } catch (error) {
+    console.error('🚫 XER Analysis failed:', error);
+    throw error;
+  }
+};
+
+/**
+ * Process selected project after project selection
+ */
+export const processSelectedProject = async (analysisResult, projectId) => {
+  console.log(`🎯 Processing selected project: ${projectId}`);
+  
+  try {
+    const parser = analysisResult.parser;
+    const projwbsData = analysisResult.projwbsData;
+    
+    // Filter PROJWBS data for selected project
+    const projectWBS = projwbsData.filter(record => 
+      record.proj_id?.toString() === projectId?.toString()
+    );
+    
+    console.log(`📊 Project ${projectId}: Found ${projectWBS.length} WBS elements`);
+    
+    // Build hierarchy map using existing functionality
+    parser.buildHierarchyMapFixed(projectWBS);
+    
+    // Identify parent structures using existing functionality
+    const parentStructures = parser.identifyParentStructuresFixed(projectWBS);
+    
+    // Extract project information
+    const selectedProject = analysisResult.availableProjects.find(p => p.proj_id === projectId);
+    const rootElement = projectWBS.find(el => !el.parent_wbs_id || el.parent_wbs_id === '');
+    
+    const projectInfo = {
+      projectId: projectId,
+      projectName: rootElement?.wbs_name || selectedProject?.project_name || `Project ${projectId}`,
+      projectCode: selectedProject?.project_code || rootElement?.wbs_short_name || '',
+      rootWbsId: rootElement?.wbs_id || null,
+      totalElements: projectWBS.length,
+      planStartDate: selectedProject?.plan_start_date,
+      planEndDate: selectedProject?.plan_end_date
+    };
+    
+    // Validation using existing functionality
+    parser.validateResults(projectWBS, parentStructures);
+    
+    console.log(`✅ Project processing complete: ${projectWBS.length} elements processed`);
+    
+    return {
+      selectedProject: selectedProject,
+      wbsElements: projectWBS,
+      hierarchy: parser.wbsHierarchy,
+      parentStructures: parentStructures,
+      projectInfo: projectInfo,
+      totalElements: projectWBS.length
+    };
+    
+  } catch (error) {
+    console.error('🚫 Project processing failed:', error);
+    throw error;
+  }
+};
+
+// ============================================================================
+// HELPER FUNCTIONS FOR MULTI-PROJECT SUPPORT
+// ============================================================================
+
+/**
+ * Enhanced XER table extraction with both PROJECT and PROJWBS tables
+ */
+function extractTablesFromXER(content) {
+  console.log('🔍 ENHANCED: Extracting PROJECT and PROJWBS tables from XER format');
+  
+  const lines = content.split('\n');
+  const projectTable = [];
+  const projwbsTable = [];
+  
+  let currentTable = null;
+  let currentHeaders = [];
+  
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    
+    // Find table starts
+    if (line === '%T\tPROJECT') {
+      currentTable = 'PROJECT';
+      console.log(`📍 Found PROJECT table at line ${i + 1}`);
+      continue;
+    } else if (line === '%T\tPROJWBS') {
+      currentTable = 'PROJWBS';
+      console.log(`📍 Found PROJWBS table at line ${i + 1}`);
+      continue;
+    }
+    
+    // Get headers
+    if (currentTable && line.startsWith('%F\t')) {
+      currentHeaders = line.substring(3).split('\t');
+      console.log(`📋 ${currentTable} headers: ${currentHeaders.length} columns`);
+      continue;
+    }
+    
+    // Process data rows
+    if (currentTable && line.startsWith('%R\t')) {
+      const values = line.substring(3).split('\t');
+      const record = {};
+      
+      currentHeaders.forEach((header, index) => {
+        record[header] = values[index] || null;
+      });
+      
+      if (currentTable === 'PROJECT' && record.proj_id) {
+        projectTable.push(record);
+      } else if (currentTable === 'PROJWBS' && record.wbs_id && record.wbs_name) {
+        projwbsTable.push(record);
+      }
+      continue;
+    }
+    
+    // Stop when reaching next table
+    if (currentTable && line.startsWith('%T\t') && 
+        !line.includes('PROJECT') && !line.includes('PROJWBS')) {
+      currentTable = null;
+      currentHeaders = [];
+    }
+  }
+  
+  console.log(`✅ ENHANCED: Extracted ${projectTable.length} PROJECT records`);
+  console.log(`✅ ENHANCED: Extracted ${projwbsTable.length} PROJWBS records`);
+  
+  return { projectTable, projwbsTable };
+}
+
+/**
+ * Extract PROJWBS data from CSV/Excel files
+ */
+async function extractPROJWBSFromFile(file) {
+  console.log('🔍 Processing CSV/Excel format');
+  
+  const fileName = file.name.toLowerCase();
+  
+  if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) {
+    return await extractFromExcel(file);
+  } else if (fileName.endsWith('.csv')) {
+    return await extractFromCSV(file);
+  } else {
+    throw new Error('Unsupported file format. Please use .xer, .csv, .xlsx, or .xls files.');
+  }
+}
+
+/**
+ * Extract from Excel files
+ */
+async function extractFromExcel(file) {
+  try {
+    let data;
+    
+    // Try using window.fs.readFile first (for analysis tool environment)
+    if (typeof window !== 'undefined' && window.fs) {
+      data = await window.fs.readFile(file.name);
+    } else {
+      // Fallback to FileReader for browser environment
+      data = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => resolve(new Uint8Array(e.target.result));
+        reader.onerror = (e) => reject(new Error('Failed to read file as ArrayBuffer'));
+        reader.readAsArrayBuffer(file);
+      });
+    }
+    
+    // Import SheetJS
+    const XLSX = await import('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js');
+    
+    const workbook = XLSX.read(data, { 
+      type: 'array',
+      cellStyles: true,
+      cellFormulas: true,
+      cellDates: true
+    });
+    
+    // Get the first worksheet
+    const sheetName = workbook.SheetNames[0];
+    const worksheet = workbook.Sheets[sheetName];
+    
+    // Convert to JSON
+    const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+    
+    if (jsonData.length < 2) {
+      throw new Error('Excel file appears to be empty or has no data rows');
+    }
+    
+    const headers = jsonData[0];
+    const rows = jsonData.slice(1);
+    
+    // Convert to objects
+    const records = rows.map(row => {
+      const record = {};
+      headers.forEach((header, index) => {
+        record[header] = row[index] || null;
+      });
+      return record;
+    }).filter(record => record.wbs_id && record.wbs_name);
+    
+    console.log(`✅ Extracted ${records.length} records from Excel file`);
+    return records;
+    
+  } catch (error) {
+    console.error('Excel processing error:', error);
+    throw new Error(`Failed to process Excel file: ${error.message}`);
+  }
+}
+
+/**
+ * Extract from CSV files
+ */
+async function extractFromCSV(file) {
+  try {
+    const content = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => resolve(e.target.result);
+      reader.onerror = (e) => reject(new Error('Failed to read file'));
+      reader.readAsText(file);
+    });
+    
+    const delimiter = detectCSVDelimiter(content);
+    console.log(`📊 CSV delimiter detected: "${delimiter}"`);
+    
+    // Simple CSV parsing (you can enhance this with PapaParse if needed)
+    const lines = content.split('\n');
+    const headers = lines[0].split(delimiter);
+    const rows = lines.slice(1);
+    
+    const records = rows.map(line => {
+      const values = line.split(delimiter);
+      const record = {};
+      headers.forEach((header, index) => {
+        record[header.trim()] = values[index] ? values[index].trim() : null;
+      });
+      return record;
+    }).filter(record => record.wbs_id && record.wbs_name);
+    
+    console.log(`✅ Extracted ${records.length} valid CSV records`);
+    return records;
+    
+  } catch (error) {
+    console.error('CSV processing error:', error);
+    throw new Error(`Failed to process CSV file: ${error.message}`);
+  }
+}
+
+/**
+ * Detect CSV delimiter
+ */
+function detectCSVDelimiter(content) {
+  const firstLine = content.split('\n')[0];
+  if (firstLine.includes('\t')) return '\t';
+  if (firstLine.includes(';')) return ';';
+  return ',';
+}
+
+/**
+ * Auto-detect project ID from WBS data
+ */
+function autoDetectProjectId(projwbsData) {
+  if (projwbsData.length === 0) return 'PROJECT_1';
+  
+  const projectCounts = {};
+  projwbsData.forEach(record => {
+    const projId = record.proj_id || 'PROJECT_1';
+    projectCounts[projId] = (projectCounts[projId] || 0) + 1;
+  });
+  
+  const mainProjectId = Object.keys(projectCounts).reduce((a, b) => 
+    projectCounts[a] > projectCounts[b] ? a : b
+  );
+  
+  console.log(`🎯 Auto-detected project ID: ${mainProjectId} (${projectCounts[mainProjectId]} elements)`);
+  return mainProjectId;
+}
+
+/**
+ * Extract available projects with WBS element counts
+ */
+function extractAvailableProjectsFromData(projectTable, projwbsData) {
+  console.log('🔍 Extracting available projects with WBS counts');
+  
+  // Count WBS elements per project
+  const projectWBSCounts = {};
+  projwbsData.forEach(wbs => {
+    const projId = wbs.proj_id;
+    if (projId) {
+      projectWBSCounts[projId] = (projectWBSCounts[projId] || 0) + 1;
+    }
+  });
+  
+  // Build available projects list
+  const availableProjects = projectTable
+    .filter(project => project.project_flag === 'Y' && projectWBSCounts[project.proj_id] > 0)
+    .map(project => {
+      const wbsCount = projectWBSCounts[project.proj_id] || 0;
+      
+      // Try to get project name from root WBS element
+      const rootWBS = projwbsData.find(wbs => 
+        wbs.proj_id === project.proj_id && 
+        (!wbs.parent_wbs_id || wbs.parent_wbs_id === '')
+      );
+      
+      return {
+        proj_id: project.proj_id,
+        project_name: rootWBS?.wbs_name || project.proj_short_name || `Project ${project.proj_id}`,
+        project_code: project.proj_short_name || '',
+        wbs_element_count: wbsCount,
+        plan_start_date: project.plan_start_date,
+        plan_end_date: project.plan_end_date,
+        project_flag: project.project_flag
+      };
+    })
+    .sort((a, b) => b.wbs_element_count - a.wbs_element_count);
+  
+  console.log('🎯 Available Projects:');
+  availableProjects.forEach(project => {
+    console.log(`   📊 ${project.proj_id}: "${project.project_name}" (${project.wbs_element_count} elements)`);
+  });
+  
+  return availableProjects;
+}
 };
