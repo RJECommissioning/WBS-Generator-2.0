@@ -3,7 +3,7 @@
 import React, { useState, useRef, createContext, useContext } from 'react';
 import { 
   Upload, Download, Settings, Plus, FileText, Zap, ChevronRight, ChevronDown, 
-  Eye, EyeOff, Layers, CheckCircle, Circle, Folder, FolderOpen, Settings2
+  Eye, EyeOff, CheckCircle, Circle
 } from 'lucide-react';
 
 // Import utilities
@@ -461,42 +461,7 @@ const StartNewProjectMode = ({ projectName, setProjectName, fileInputRef, handle
   </div>
 );
 
-// Enhanced Continue Project Mode Component with XER Structure Visualization
-const ContinueProjectMode = ({ 
-  projectState, 
-  projectStateInputRef, 
-  handleWBSFileUpload, 
-  handleFileUpload, 
-  isProcessing,
-  rjeColors 
-}) => {
-  const [showStructureDetails, setShowStructureDetails] = useState(true);
-  const [expandedNodes, setExpandedNodes] = useState(new Set(['root', 'subsystems', 'prerequisites']));
-
-  const toggleNode = (nodeId) => {
-    const newExpanded = new Set(expandedNodes);
-    if (newExpanded.has(nodeId)) {
-      newExpanded.delete(nodeId);
-    } else {
-      newExpanded.add(nodeId);
-    }
-    setExpandedNodes(newExpanded);
-  };
-
-  const renderStructureNode = (node, level = 0, nodeId = '') => {
-    const isExpanded = expandedNodes.has(nodeId);
-    const hasChildren = node.children && node.children.length > 0;
-    
-    return (
-      <div key={nodeId} style={{ marginLeft: `${level * 20}px` }}>
-        <div 
-          className="flex items-center py-1 px-2 hover:bg-gray-50 rounded cursor-pointer"
-          onClick={() => hasChildren && toggleNode(nodeId)}
-        >
-          {hasChildren ? (
-            isExpanded ? <ChevronDown className="w-4 h-4 mr-1" /> : <ChevronRight className="w-4 h-4 mr-1" />
-          ) : (
-            <Circle className="w-3 h-3 mr-2 ml-1" style={{ color: rjeColors.mediumGreen }} />
+<Circle className="w-3 h-3 mr-2 ml-1" style={{ color: rjeColors.mediumGreen }} />
           )}
           
           {level === 0 ? (
@@ -630,20 +595,9 @@ const ContinueProjectMode = ({
                 <CheckCircle className="w-5 h-5 mr-2" style={{ color: rjeColors.darkGreen }} />
                 <span className="font-medium">✅ WBS Structure Loaded Successfully</span>
               </div>
-              <button
-                onClick={() => setShowStructureDetails(!showStructureDetails)}
-                className="flex items-center text-sm px-3 py-1 rounded-lg"
-                style={{ 
-                  backgroundColor: rjeColors.darkGreen + '20',
-                  color: rjeColors.darkBlue 
-                }}
-              >
-                {showStructureDetails ? <EyeOff className="w-4 h-4 mr-1" /> : <Eye className="w-4 h-4 mr-1" />}
-                {showStructureDetails ? 'Hide' : 'Show'} Details
-              </button>
             </div>
             
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-3">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
               <div className="bg-gray-50 p-3 rounded-lg">
                 <div className="text-sm text-gray-600">Project Name</div>
                 <div className="font-medium">{projectState.projectName}</div>
@@ -658,33 +612,32 @@ const ContinueProjectMode = ({
               </div>
             </div>
 
-            {/* Enhanced Structure Visualization */}
-            {showStructureDetails && structureData && (
-              <div className="mt-4 border-t pt-4">
-                <h5 className="font-semibold mb-3 flex items-center">
-                  <Layers className="w-4 h-4 mr-2" style={{ color: rjeColors.darkBlue }} />
-                  WBS Structure Overview
-                </h5>
-                <div className="bg-gray-50 p-3 rounded-lg max-h-96 overflow-y-auto">
-                  {renderStructureNode(structureData, 0, 'root')}
+            {/* Next Subsystem Info */}
+            {projectState.summary?.nextSubsystemNumber && (
+              <div className="mb-4 p-3 rounded-lg" style={{ backgroundColor: rjeColors.mediumGreen + '20' }}>
+                <div className="text-sm font-medium" style={{ color: rjeColors.darkBlue }}>
+                  🎯 Ready to Add: <span className="font-bold">S{projectState.summary.nextSubsystemNumber}</span>
                 </div>
-                
-                {/* Next Subsystem Info */}
-                {projectState.summary?.nextSubsystemNumber && (
-                  <div className="mt-3 p-3 rounded-lg" style={{ backgroundColor: rjeColors.mediumGreen + '20' }}>
-                    <div className="text-sm font-medium" style={{ color: rjeColors.darkBlue }}>
-                      🎯 Ready to Add: <span className="font-bold">S{projectState.summary.nextSubsystemNumber}</span>
-                    </div>
-                    <div className="text-xs text-gray-600 mt-1">
-                      New equipment will be organized under this subsystem number
-                    </div>
-                  </div>
-                )}
+                <div className="text-xs text-gray-600 mt-1">
+                  New equipment will be organized under this subsystem number
+                </div>
               </div>
             )}
           </div>
         )}
       </div>
+
+      {/* P6-Style WBS Structure Visualization - shown after XER is loaded */}
+      {projectState && projectState.wbsNodes && (
+        <div className="mb-6">
+          <h4 className="font-semibold mb-3" style={{ color: rjeColors.darkBlue }}>
+            WBS Structure Visualization
+          </h4>
+          <div className="border rounded-lg p-4" style={{ borderColor: rjeColors.darkGreen }}>
+            <WBSTreeVisualization wbsNodes={projectState.wbsNodes} />
+          </div>
+        </div>
+      )}
 
       {/* Step 2: Upload Additional Equipment (Enhanced) */}
       {projectState && (
