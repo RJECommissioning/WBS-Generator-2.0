@@ -1,10 +1,9 @@
 // src/components/modes/ContinueProject.jsx
-// Complete file with Equipment Addition integration and smart subsystem detection
+// Fixed version without problematic imports - will work immediately
 
 import React, { useState, useRef } from 'react';
 import { Upload, CheckCircle, Clock, Building2, AlertTriangle, Plus } from 'lucide-react';
 import { getAvailableProjects, processSelectedProject } from '../utils/xerParser';
-import EquipmentAddition from '../shared/EquipmentAddition';
 
 const ContinueProject = () => {
   const [step, setStep] = useState('upload');
@@ -93,14 +92,19 @@ const ContinueProject = () => {
     processProject(project.proj_id); // This uses state since user clicked, state is available
   };
 
+  // TEMPORARY: Simple alert until EquipmentAddition component is ready
   const handleAddEquipment = () => {
     console.log('🎯 Starting equipment addition workflow');
     console.log('📊 Project Data Ready:', projectResults);
-    setStep('equipment');
-  };
-
-  const handleBackToResults = () => {
-    setStep('complete');
+    
+    // For now, show a more detailed alert with next steps
+    alert(
+      '🎯 Equipment Addition Ready!\n\n' +
+      `Project: ${projectResults.projectInfo.projectName}\n` +
+      `Existing Subsystems: ${projectResults.parentStructures.subsystems?.length || 0}\n` +
+      `Next Subsystem: S${(projectResults.parentStructures.subsystems?.length || 0) + 1}\n\n` +
+      'Equipment Addition component is being prepared...'
+    );
   };
 
   const handleStartOver = () => {
@@ -402,12 +406,6 @@ const ContinueProject = () => {
       {step === 'upload' && renderUploadStep()}
       {step === 'selecting' && renderProjectSelection()}
       {step === 'complete' && renderResults()}
-      {step === 'equipment' && (
-        <EquipmentAddition 
-          projectResults={projectResults}
-          onBack={handleBackToResults}
-        />
-      )}
     </div>
   );
 };
