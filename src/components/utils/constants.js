@@ -152,3 +152,26 @@ export const performanceConfig = {
   batchSize: 1000,
   processingTimeout: 60000 // 1 minute
 };
+// Add new constants for Continue Project functionality
+export const xerFileConfig = {
+  supportedFormats: ['.xer', '.csv', '.xlsx', '.xls'],
+  maxFileSize: 50 * 1024 * 1024, // 50MB for large P6 exports
+  projwbsFields: [
+    'wbs_id', 'proj_id', 'wbs_short_name', 'wbs_name', 'parent_wbs_id'
+  ]
+};
+
+export const integrationConfig = {
+  maxSubsystems: 50,
+  maxEquipmentPerCategory: 1000,
+  validationTimeout: 30000, // 30 seconds
+  codeGenerationStart: 100000 // Start new WBS IDs high to avoid conflicts
+};
+
+export const parentStructurePatterns = {
+  prerequisites: /^P\s*\|\s*Pre-?[Rr]equisites?/i,
+  milestones: /^M\s*\|\s*Milestones?/i,
+  energisation: /^E\s*\|\s*Energisation?/i,
+  subsystem: /^S(\d+)\s*\|\s*([+]?Z\d+)/i,
+  tbcSection: /^TBC\s*[-|]\s*Equipment/i
+};
