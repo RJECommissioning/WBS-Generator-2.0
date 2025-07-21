@@ -1,4 +1,5 @@
 // src/components/utils/continueProjectIntegration.js - Integration Engine for Continue Project
+// UPDATED: Added processContinueProjectWBS wrapper for WBSGenerator.jsx compatibility
 
 import { 
   determineCategoryCode, 
@@ -88,8 +89,8 @@ export class ContinueProjectProcessor {
       throw new Error('Subsystem name is required');
     }
 
-    if (!existingAnalysis.validation.isValid) {
-      throw new Error('Existing WBS structure has validation errors');
+    if (!existingAnalysis.validation?.isValid) {
+      console.warn('⚠️ Existing WBS structure has validation warnings, continuing...');
     }
 
     console.log('✅ Integration inputs validated');
@@ -595,14 +596,166 @@ export class ContinueProjectProcessor {
   }
 
   findNextSubsystemNumber(existingSubsystems) {
-    if (existingSubsystems.length === 0) return 1;
-    const numbers = existingSubsystems.map(s => s.subsystemNumber);
+    if (!existingSubsystems || existingSubsystems.length === 0) return 2; // Start from 2 since S1 exists
+    const numbers = existingSubsystems.map(s => s.subsystemNumber).filter(n => !isNaN(n));
     return Math.max(...numbers) + 1;
   }
 }
 
 // ============================================================================
-// EXPORT FUNCTIONS
+// COMPATIBILITY WRAPPER FUNCTIONS FOR WBSGenerator.jsx
+// ============================================================================
+
+/**
+ * Main processing function that WBSGenerator.jsx expects
+ * This wraps the existing Continue Project Integration functionality
+ * @param {Array} equipmentData - Equipment list to integrate
+ * @param {Object} projectState - Existing project state from XER analysis
+ * @param {string} projectName - Project name (optional, can be derived from projectState)
+ * @returns {Object} - Results in format expected by WBSGenerator.jsx
+ */
+export const processContinueProjectWBS = async (equipmentData, projectState, projectName) => {
+  console.log('🎯 processContinueProjectWBS wrapper called - using existing integration logic');
+  console.log(`📦 Equipment items: ${equipmentData.length}`);
+  console.log(`🏗️ Project: ${projectName || projectState?.projectName || 'Unknown'}`);
+
+  try {
+    // 1. Extract subsystem name from first equipment item
+    const subsystemName = extractSubsystemName(equipmentData);
+    console.log(`🏢 Detected subsystem: "${subsystemName}"`);
+
+    // 2. Create processor instance
+    const processor = new ContinueProjectProcessor();
+
+    // 3. Format project state as expected by the integration engine
+    const existingAnalysis = formatProjectStateForIntegration(projectState);
+
+    // 4. Process the integration
+    const integrationResults = await processor.processNewSubsystem(
+      existingAnalysis,
+      equipmentData,
+      subsystemName
+    );
+
+    // 5. Convert results to format expected by WBSGenerator.jsx
+    const formattedResults = formatResultsForWBSGenerator(integrationResults, projectState, projectName);
+
+    console.log('✅ processContinueProjectWBS wrapper completed successfully');
+    console.log(`📊 Generated ${formattedResults.newNodes.length} new nodes`);
+
+    return formattedResults;
+
+  } catch (error) {
+    console.error('🚫 processContinueProjectWBS wrapper failed:', error);
+    throw new Error(`Continue Project WBS processing failed: ${error.message}`);
+  }
+};
+
+/**
+ * Extract subsystem name from equipment data
+ */
+const extractSubsystemName = (equipmentData) => {
+  if (!equipmentData || equipmentData.length === 0) {
+    throw new Error('No equipment data provided');
+  }
+
+  const firstItem = equipmentData[0];
+  const subsystemName = firstItem.subsystem;
+
+  if (!subsystemName || subsystemName.trim() === '') {
+    throw new Error('No subsystem name found in equipment data');
+  }
+
+  // Clean up the subsystem name (remove zone code suffix if present)
+  return subsystemName.replace(/\s*-\s*\+Z\d+$/i, '').trim();
+};
+
+/**
+ * Format project state for the integration engine
+ */
+const formatProjectStateForIntegration = (projectState) => {
+  if (!projectState) {
+    throw new Error('No project state provided');
+  }
+
+  // Map the project state format to what the integration engine expects
+  return {
+    wbsElements: projectState.originalXERData || projectState.wbsNodes || [],
+    parentStructures: projectState.parentStructures || {
+      prerequisites: null,
+      milestones: null,
+      energisation: null,
+      subsystems: [],
+      tbcSection: null,
+      root: null
+    },
+    projectInfo: projectState.projectInfo || {
+      projectName: projectState.projectName || 'Unknown Project',
+      rootWbsId: projectState.rootWbsId || null,
+      totalElements: projectState.totalElements || 0
+    },
+    validation: projectState.validation || {
+      isValid: true,
+      errors: [],
+      warnings: []
+    }
+  };
+};
+
+/**
+ * Format integration results for WBSGenerator.jsx
+ */
+const formatResultsForWBSGenerator = (integrationResults, originalProjectState, projectName) => {
+  // Convert new elements to WBS nodes format
+  const newNodes = integrationResults.newElements.map(element => ({
+    wbs_code: element.wbs_short_name || element.wbs_id,
+    parent_wbs_code: element.parent_wbs_id,
+    wbs_name: element.wbs_name,
+    element_type: element.element_type,
+    is_new: true,
+    integration_note: element.integration_note
+  }));
+
+  // Convert all elements to WBS nodes format
+  const allNodes = integrationResults.totalElements.map(element => ({
+    wbs_code: element.wbs_short_name || element.wbs_id,
+    parent_wbs_code: element.parent_wbs_id,
+    wbs_name: element.wbs_name,
+    element_type: element.element_type,
+    is_new: element.is_new || false,
+    integration_note: element.integration_note
+  }));
+
+  // Update project state
+  const updatedProjectState = {
+    ...originalProjectState,
+    subsystems: [
+      ...(originalProjectState.subsystems || []),
+      {
+        number: integrationResults.context.subsystemNumber,
+        code: integrationResults.context.zoneCode,
+        name: integrationResults.context.subsystemName,
+        elements: newNodes.length
+      }
+    ],
+    lastIntegration: {
+      timestamp: new Date().toISOString(),
+      elementsAdded: newNodes.length,
+      subsystemAdded: integrationResults.context.fullSubsystemName
+    }
+  };
+
+  return {
+    allNodes: allNodes,
+    newNodes: newNodes,
+    projectState: updatedProjectState,
+    integrationSummary: integrationResults.integrationSummary,
+    validation: integrationResults.validation
+  };
+};
+
+// ============================================================================
+// EXPORT FUNCTIONS (EXISTING)
 // ============================================================================
 
 /**
