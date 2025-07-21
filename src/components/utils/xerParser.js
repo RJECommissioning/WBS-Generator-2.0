@@ -722,6 +722,9 @@ export const getAvailableProjects = async (file) => {
 /**
  * Process selected project after project selection
  */
+// QUICK FIX for xerParser.js - processSelectedProject function
+// Replace the existing processSelectedProject function with this fixed version:
+
 export const processSelectedProject = async (analysisResult, projectId) => {
   console.log('🚨 DEBUG: Real processSelectedProject function called!');
   console.log(`🎯 Processing selected project: ${projectId}`);
@@ -742,24 +745,22 @@ export const processSelectedProject = async (analysisResult, projectId) => {
     const selectedProject = analysisResult.availableProjects.find(p => p.proj_id === projectId);
     const rootElement = projectWBS.find(el => !el.parent_wbs_id || el.parent_wbs_id === '');
     
-    // FIXED: Now includes hierarchy levels in project info
-    const hierarchyLevels = parser.calculateHierarchyLevels();
-    
     const projectInfo = {
       projectId: projectId,
       projectName: rootElement?.wbs_name || selectedProject?.project_name || `Project ${projectId}`,
       projectCode: selectedProject?.project_code || rootElement?.wbs_short_name || '',
       rootWbsId: rootElement?.wbs_id || null,
       totalElements: projectWBS.length,
-      hierarchyLevels: hierarchyLevels, // FIXED: Now includes correct hierarchy levels
       planStartDate: selectedProject?.plan_start_date,
       planEndDate: selectedProject?.plan_end_date
     };
     
-    parser.validateResults(projectWBS, parentStructures);
+    // *** FIX: Set projectInfo on parser instance before validation ***
+    parser.projectInfo = projectInfo;
+    
+    const validation = parser.validateResults(projectWBS, parentStructures);
     
     console.log(`✅ Project processing complete: ${projectWBS.length} elements processed`);
-    console.log(`📏 Hierarchy levels calculated: ${hierarchyLevels}`);
     
     return {
       selectedProject: selectedProject,
@@ -768,7 +769,7 @@ export const processSelectedProject = async (analysisResult, projectId) => {
       parentStructures: parentStructures,
       projectInfo: projectInfo,
       totalElements: projectWBS.length,
-      hierarchyLevels: hierarchyLevels // FIXED: Also included at root level
+      validation: validation
     };
     
   } catch (error) {
