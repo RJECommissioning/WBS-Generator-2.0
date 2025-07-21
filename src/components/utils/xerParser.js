@@ -1,16 +1,16 @@
-// src/components/utils/xerParser.js - XER File Processing & Parent Structure Recognition
+// src/components/utils/xerParser.js - FIXED XER Parser with Enhanced Hierarchy Building
 
 /**
- * XER File Processing Engine for Primavera P6 Integration
- * Handles parsing, parent structure recognition, and WBS hierarchy analysis
+ * FIXED XER File Processing Engine for Primavera P6 Integration
+ * Addresses hierarchy building issues and parent structure recognition problems
  */
 
 // ============================================================================
-// XER FILE PROCESSING ENGINE
+// ENHANCED XER FILE PROCESSING ENGINE
 // ============================================================================
 
 /**
- * Main XER Parser Class - Processes P6 XER files and extracts WBS structures
+ * Enhanced XER Parser Class with Fixed Hierarchy Building
  */
 export class XERParser {
   constructor() {
@@ -18,22 +18,23 @@ export class XERParser {
     this.wbsHierarchy = new Map();
     this.parentStructures = new Map();
     this.projectInfo = null;
+    this.debugMode = true; // Enable for troubleshooting
   }
 
   /**
-   * Parse XER file and extract all relevant data
-   * @param {File} file - XER or CSV file from P6 export
-   * @returns {Object} - Parsed WBS structure with hierarchy and parent patterns
+   * Parse XER file with enhanced error handling and debugging
    */
   async parseXERFile(file) {
-    console.log(`🔧 XER Parser: Processing file "${file.name}"`);
+    console.log(`🔧 FIXED XER Parser: Processing file "${file.name}"`);
     
     try {
       // 1. Read file content
       const content = await this.readFile(file);
+      console.log(`📄 File content length: ${content.length} characters`);
       
-      // 2. Determine if XER or CSV format
-      const isXER = file.name.toLowerCase().endsWith('.xer') || content.includes('%T\tPROJWBS');
+      // 2. Determine file format with better detection
+      const isXER = this.detectXERFormat(content);
+      console.log(`📋 File format detected: ${isXER ? 'XER' : 'CSV'}`);
       
       let projwbsData;
       if (isXER) {
@@ -44,20 +45,29 @@ export class XERParser {
         projwbsData = await this.extractPROJWBSFromCSV(content);
       }
       
-      // 4. Filter for target project (auto-detect or use first project)
+      console.log(`📊 Raw PROJWBS records extracted: ${projwbsData.length}`);
+      
+      if (projwbsData.length === 0) {
+        throw new Error('No PROJWBS data found in file. Please ensure this is a valid P6 export.');
+      }
+      
+      // 4. Filter for target project with improved logic
       const projectId = this.autoDetectProjectId(projwbsData);
       const projectWBS = this.filterByProject(projwbsData, projectId);
       
-      console.log(`📊 XER Parser: Found ${projectWBS.length} WBS elements for project ${projectId}`);
+      console.log(`🎯 Project ${projectId}: Found ${projectWBS.length} WBS elements`);
       
-      // 5. Build hierarchy map
-      this.buildHierarchyMap(projectWBS);
+      // 5. FIXED: Build hierarchy map with enhanced logic
+      this.buildHierarchyMapFixed(projectWBS);
       
-      // 6. Identify parent structures
-      const parentStructures = this.identifyParentStructures(projectWBS);
+      // 6. FIXED: Identify parent structures with better patterns
+      const parentStructures = this.identifyParentStructuresFixed(projectWBS);
       
       // 7. Extract project information
       this.projectInfo = this.extractProjectInfo(projectWBS);
+      
+      // 8. Validation and debugging
+      this.validateResults(projectWBS, parentStructures);
       
       return {
         wbsElements: projectWBS,
@@ -68,13 +78,34 @@ export class XERParser {
       };
       
     } catch (error) {
-      console.error('🚫 XER Parser Error:', error);
+      console.error('🚫 FIXED XER Parser Error:', error);
       throw new Error(`Failed to parse XER file: ${error.message}`);
     }
   }
 
   /**
-   * Read file content based on type
+   * Enhanced file format detection
+   */
+  detectXERFormat(content) {
+    // Check for XER format indicators
+    const xerIndicators = ['%T\tPROJWBS', '%F\t', '%R\t'];
+    const hasXERIndicators = xerIndicators.some(indicator => content.includes(indicator));
+    
+    // Check for CSV format indicators
+    const lines = content.split('\n').slice(0, 5);
+    const hasCSVHeaders = lines.some(line => 
+      line.includes('wbs_id') || 
+      line.includes('wbs_name') || 
+      line.includes('parent_wbs_id')
+    );
+    
+    console.log(`🔍 Format detection - XER indicators: ${hasXERIndicators}, CSV headers: ${hasCSVHeaders}`);
+    
+    return hasXERIndicators && !hasCSVHeaders;
+  }
+
+  /**
+   * Read file content
    */
   async readFile(file) {
     return new Promise((resolve, reject) => {
@@ -86,11 +117,10 @@ export class XERParser {
   }
 
   /**
-   * Extract PROJWBS table from XER format
-   * Handles the specific P6 XER table structure
+   * FIXED: Extract PROJWBS table from XER format with better parsing
    */
   extractPROJWBSFromXER(content) {
-    console.log('🔍 XER Parser: Extracting PROJWBS table from XER format');
+    console.log('🔍 FIXED: Extracting PROJWBS table from XER format');
     
     const lines = content.split('\n');
     const projwbsData = [];
@@ -103,12 +133,14 @@ export class XERParser {
       // Find PROJWBS table start
       if (line === '%T\tPROJWBS') {
         inProjwbsSection = true;
+        console.log(`📍 Found PROJWBS table at line ${i + 1}`);
         continue;
       }
       
       // Get headers
       if (inProjwbsSection && line.startsWith('%F\t')) {
         headers = line.substring(3).split('\t');
+        console.log(`📋 PROJWBS headers: ${headers.join(', ')}`);
         continue;
       }
       
@@ -121,37 +153,52 @@ export class XERParser {
           record[header] = values[index] || null;
         });
         
-        projwbsData.push(record);
+        // Ensure we have essential fields
+        if (record.wbs_id && record.wbs_name) {
+          projwbsData.push(record);
+        }
         continue;
       }
       
       // Stop when reaching next table
       if (inProjwbsSection && line.startsWith('%T\t') && line !== '%T\tPROJWBS') {
+        console.log(`📍 End of PROJWBS table at line ${i + 1}`);
         break;
       }
     }
     
-    console.log(`✅ XER Parser: Extracted ${projwbsData.length} PROJWBS records`);
+    console.log(`✅ FIXED: Extracted ${projwbsData.length} PROJWBS records`);
     return projwbsData;
   }
 
   /**
-   * Extract PROJWBS data from CSV format
-   * Handles standard CSV exports from P6
+   * FIXED: Extract PROJWBS data from CSV format with better handling
    */
   async extractPROJWBSFromCSV(content) {
-    console.log('🔍 XER Parser: Processing CSV format');
+    console.log('🔍 FIXED: Processing CSV format');
     
     const Papa = await import('papaparse');
+    const delimiter = this.detectCSVDelimiter(content);
+    console.log(`📊 CSV delimiter detected: "${delimiter}"`);
+    
     const parsed = Papa.default.parse(content, {
       header: true,
       dynamicTyping: true,
       skipEmptyLines: true,
-      delimiter: this.detectCSVDelimiter(content)
+      delimiter: delimiter
     });
     
-    console.log(`✅ XER Parser: Extracted ${parsed.data.length} CSV records`);
-    return parsed.data;
+    if (parsed.errors.length > 0) {
+      console.warn('⚠️ CSV parsing warnings:', parsed.errors);
+    }
+    
+    // Filter for valid WBS records
+    const validRecords = parsed.data.filter(record => 
+      record.wbs_id && record.wbs_name
+    );
+    
+    console.log(`✅ FIXED: Extracted ${validRecords.length} valid CSV records`);
+    return validRecords;
   }
 
   /**
@@ -165,12 +212,11 @@ export class XERParser {
   }
 
   /**
-   * Auto-detect project ID from data
+   * Auto-detect project ID
    */
   autoDetectProjectId(projwbsData) {
     if (projwbsData.length === 0) return null;
     
-    // Find the most common proj_id
     const projectCounts = {};
     projwbsData.forEach(record => {
       const projId = record.proj_id;
@@ -183,7 +229,7 @@ export class XERParser {
       projectCounts[a] > projectCounts[b] ? a : b
     );
     
-    console.log(`🎯 XER Parser: Auto-detected project ID: ${mainProjectId}`);
+    console.log(`🎯 FIXED: Auto-detected project ID: ${mainProjectId} (${projectCounts[mainProjectId]} elements)`);
     return mainProjectId;
   }
 
@@ -192,29 +238,222 @@ export class XERParser {
    */
   filterByProject(projwbsData, projectId) {
     return projwbsData.filter(record => 
-      record.proj_id?.toString() === projectId?.toString()
+      !projectId || record.proj_id?.toString() === projectId?.toString()
     );
   }
 
   /**
-   * Build hierarchy map for efficient parent-child lookups
+   * FIXED: Build hierarchy map with enhanced parent-child relationship logic
    */
-  buildHierarchyMap(projectWBS) {
-    console.log('🏗️ XER Parser: Building WBS hierarchy map');
+  buildHierarchyMapFixed(projectWBS) {
+    console.log('🏗️ FIXED: Building WBS hierarchy map with enhanced logic');
     
     this.wbsHierarchy.clear();
     
+    // Create a lookup map for faster parent finding
+    const wbsLookup = new Map();
     projectWBS.forEach(element => {
-      const wbsId = element.wbs_id;
-      const parentId = element.parent_wbs_id;
-      
-      if (!this.wbsHierarchy.has(parentId)) {
-        this.wbsHierarchy.set(parentId, []);
-      }
-      this.wbsHierarchy.get(parentId).push(element);
+      wbsLookup.set(element.wbs_id, element);
     });
     
-    console.log(`✅ XER Parser: Built hierarchy with ${this.wbsHierarchy.size} parent nodes`);
+    console.log(`📊 Created lookup map with ${wbsLookup.size} elements`);
+    
+    // Build hierarchy relationships
+    let rootNodes = 0;
+    let orphanedNodes = 0;
+    
+    projectWBS.forEach(element => {
+      const parentId = element.parent_wbs_id;
+      
+      if (!parentId || parentId === '' || parentId === element.wbs_id) {
+        // This is a root node
+        if (!this.wbsHierarchy.has(null)) {
+          this.wbsHierarchy.set(null, []);
+        }
+        this.wbsHierarchy.get(null).push(element);
+        rootNodes++;
+      } else {
+        // This has a parent
+        const parentExists = wbsLookup.has(parentId);
+        
+        if (parentExists) {
+          // Valid parent-child relationship
+          if (!this.wbsHierarchy.has(parentId)) {
+            this.wbsHierarchy.set(parentId, []);
+          }
+          this.wbsHierarchy.get(parentId).push(element);
+        } else {
+          // Orphaned node - parent not found
+          if (this.debugMode) {
+            console.warn(`⚠️ FIXED: Orphaned node ${element.wbs_id} (parent ${parentId} not found)`);
+          }
+          orphanedNodes++;
+          
+          // Add to root level as fallback
+          if (!this.wbsHierarchy.has(null)) {
+            this.wbsHierarchy.set(null, []);
+          }
+          this.wbsHierarchy.get(null).push(element);
+        }
+      }
+    });
+    
+    console.log(`✅ FIXED: Hierarchy built successfully`);
+    console.log(`   📊 Root nodes: ${rootNodes}`);
+    console.log(`   📊 Orphaned nodes: ${orphanedNodes}`);
+    console.log(`   📊 Parent groups: ${this.wbsHierarchy.size}`);
+    
+    // Additional debugging
+    if (this.debugMode && rootNodes > 10) {
+      console.warn(`⚠️ FIXED: Unusually high number of root nodes (${rootNodes}). This may indicate hierarchy parsing issues.`);
+    }
+  }
+
+  /**
+   * FIXED: Identify parent structures with enhanced pattern matching
+   */
+  identifyParentStructuresFixed(wbsElements) {
+    console.log('🔍 FIXED: Analyzing WBS patterns with enhanced recognition');
+    
+    const patterns = {
+      prerequisites: [
+        /^P\s*\|\s*Pre-?[Rr]equisites?/i,
+        /^Pre-?[Rr]equisites?/i,
+        /^P\s+Pre-?[Rr]equisites?/i
+      ],
+      milestones: [
+        /^M\s*\|\s*Milestones?/i,
+        /^Milestones?/i,
+        /^M\s+Milestones?/i
+      ],
+      energisation: [
+        /^E\s*\|\s*Energisation?/i,
+        /^Energisation?/i,
+        /^E\s+Energisation?/i
+      ],
+      subsystem: [
+        /^S(\d+)\s*\|\s*([+]?Z\d+)/i,
+        /^S(\d+)\s+([+]?Z\d+)/i,
+        /^S(\d+)\s*[-|]\s*([+]?Z\d+)/i
+      ],
+      tbcSection: [
+        /^TBC\s*[-|]\s*Equipment/i,
+        /^TBC.*Equipment/i,
+        /Equipment.*TBC/i
+      ]
+    };
+
+    const parentStructures = {
+      prerequisites: null,
+      milestones: null,
+      energisation: null,
+      subsystems: [],
+      tbcSection: null,
+      root: null
+    };
+
+    // Find root element
+    const rootElements = wbsElements.filter(el => !el.parent_wbs_id || el.parent_wbs_id === '');
+    if (rootElements.length > 0) {
+      parentStructures.root = rootElements[0]; // Take the first root
+      console.log(`🏠 FIXED: Found root element: "${rootElements[0].wbs_name}"`);
+      
+      if (rootElements.length > 1) {
+        console.warn(`⚠️ FIXED: Multiple root elements found (${rootElements.length}). Using: "${rootElements[0].wbs_name}"`);
+      }
+    }
+
+    // Analyze each element for parent patterns
+    let matchCount = 0;
+    wbsElements.forEach(element => {
+      const name = element.wbs_name || '';
+      
+      // Check Prerequisites patterns
+      if (!parentStructures.prerequisites) {
+        for (const pattern of patterns.prerequisites) {
+          if (pattern.test(name)) {
+            parentStructures.prerequisites = element;
+            console.log(`📋 FIXED: Found Prerequisites: "${name}" (ID: ${element.wbs_id})`);
+            matchCount++;
+            break;
+          }
+        }
+      }
+      
+      // Check Milestones patterns
+      if (!parentStructures.milestones) {
+        for (const pattern of patterns.milestones) {
+          if (pattern.test(name)) {
+            parentStructures.milestones = element;
+            console.log(`🎯 FIXED: Found Milestones: "${name}" (ID: ${element.wbs_id})`);
+            matchCount++;
+            break;
+          }
+        }
+      }
+      
+      // Check Energisation patterns
+      if (!parentStructures.energisation) {
+        for (const pattern of patterns.energisation) {
+          if (pattern.test(name)) {
+            parentStructures.energisation = element;
+            console.log(`⚡ FIXED: Found Energisation: "${name}" (ID: ${element.wbs_id})`);
+            matchCount++;
+            break;
+          }
+        }
+      }
+      
+      // Check Subsystem patterns
+      for (const pattern of patterns.subsystem) {
+        const match = name.match(pattern);
+        if (match) {
+          const subsystemInfo = {
+            element: element,
+            subsystemNumber: parseInt(match[1]),
+            zoneCode: match[2],
+            fullName: name
+          };
+          parentStructures.subsystems.push(subsystemInfo);
+          console.log(`🏢 FIXED: Found Subsystem S${subsystemInfo.subsystemNumber}: "${name}" (Zone: ${subsystemInfo.zoneCode})`);
+          matchCount++;
+          break;
+        }
+      }
+      
+      // Check TBC section patterns
+      if (!parentStructures.tbcSection) {
+        for (const pattern of patterns.tbcSection) {
+          if (pattern.test(name)) {
+            parentStructures.tbcSection = element;
+            console.log(`⏳ FIXED: Found TBC Section: "${name}" (ID: ${element.wbs_id})`);
+            matchCount++;
+            break;
+          }
+        }
+      }
+    });
+
+    // Sort subsystems by number
+    parentStructures.subsystems.sort((a, b) => a.subsystemNumber - b.subsystemNumber);
+
+    console.log(`✅ FIXED: Parent Structure Analysis Complete (${matchCount} matches found):`);
+    console.log(`   Prerequisites: ${parentStructures.prerequisites ? '✅' : '❌'}`);
+    console.log(`   Milestones: ${parentStructures.milestones ? '✅' : '❌'}`);
+    console.log(`   Energisation: ${parentStructures.energisation ? '✅' : '❌'}`);
+    console.log(`   Subsystems: ${parentStructures.subsystems.length} found`);
+    console.log(`   TBC Section: ${parentStructures.tbcSection ? '✅' : '❌'}`);
+
+    // Warning if no patterns found
+    if (matchCount === 0) {
+      console.warn('⚠️ FIXED: No standard parent structure patterns found!');
+      console.warn('📝 Sample WBS names for debugging:');
+      wbsElements.slice(0, 10).forEach(el => {
+        console.warn(`   - "${el.wbs_name}" (ID: ${el.wbs_id})`);
+      });
+    }
+
+    return parentStructures;
   }
 
   /**
@@ -230,109 +469,87 @@ export class XERParser {
       totalElements: projectWBS.length
     };
   }
+
+  /**
+   * Validate results and provide debugging information
+   */
+  validateResults(projectWBS, parentStructures) {
+    console.log('🔍 FIXED: Validating parsing results...');
+    
+    const validation = {
+      hasRootElement: !!this.projectInfo.rootWbsId,
+      hasHierarchy: this.wbsHierarchy.size > 0,
+      hasParentStructures: Object.values(parentStructures).some(v => v !== null && (!Array.isArray(v) || v.length > 0)),
+      totalElements: projectWBS.length
+    };
+    
+    console.log('📊 FIXED: Validation Results:');
+    console.log(`   Root Element: ${validation.hasRootElement ? '✅' : '❌'}`);
+    console.log(`   Hierarchy Built: ${validation.hasHierarchy ? '✅' : '❌'}`);
+    console.log(`   Parent Structures: ${validation.hasParentStructures ? '✅' : '❌'}`);
+    console.log(`   Total Elements: ${validation.totalElements}`);
+    
+    if (!validation.hasParentStructures) {
+      console.warn('⚠️ FIXED: No parent structures detected. This may indicate:');
+      console.warn('   1. Non-standard WBS naming conventions');
+      console.warn('   2. File format issues');
+      console.warn('   3. Missing required WBS sections');
+    }
+    
+    return validation;
+  }
 }
 
 // ============================================================================
-// PARENT STRUCTURE RECOGNITION SYSTEM
+// ENHANCED PARENT STRUCTURE MANAGER
 // ============================================================================
 
 /**
- * Smart Parent Structure Manager - Identifies and manages P6 parent patterns
+ * Enhanced Parent Structure Manager with better pattern recognition
  */
 export class ParentStructureManager {
   constructor() {
+    // Enhanced patterns with more variations
     this.patterns = {
-      prerequisites: /^P\s*\|\s*Pre-?[Rr]equisites?/i,
-      milestones: /^M\s*\|\s*Milestones?/i,
-      energisation: /^E\s*\|\s*Energisation?/i,
-      subsystem: /^S(\d+)\s*\|\s*([+]?Z\d+)/i,
-      tbcSection: /^TBC\s*[-|]\s*Equipment/i
+      prerequisites: [
+        /^P\s*\|\s*Pre-?[Rr]equisites?/i,
+        /^Pre-?[Rr]equisites?/i,
+        /^P\s+Pre-?[Rr]equisites?/i,
+        /Prerequisites/i
+      ],
+      milestones: [
+        /^M\s*\|\s*Milestones?/i,
+        /^Milestones?/i,
+        /^M\s+Milestones?/i
+      ],
+      energisation: [
+        /^E\s*\|\s*Energisation?/i,
+        /^Energisation?/i,
+        /^E\s+Energisation?/i
+      ],
+      subsystem: [
+        /^S(\d+)\s*\|\s*([+]?Z\d+)/i,
+        /^S(\d+)\s+([+]?Z\d+)/i,
+        /^S(\d+)\s*[-|]\s*([+]?Z\d+)/i
+      ],
+      tbcSection: [
+        /^TBC\s*[-|]\s*Equipment/i,
+        /^TBC.*Equipment/i,
+        /Equipment.*TBC/i
+      ]
     };
   }
 
   /**
-   * Identify all key parent structures in the WBS
-   * @param {Array} wbsElements - All WBS elements from the project
-   * @returns {Object} - Categorized parent structures
+   * Enhanced parent structure identification
    */
   identifyParentStructures(wbsElements) {
-    console.log('🔍 Parent Structure Manager: Analyzing WBS patterns');
-    
-    const parentStructures = {
-      prerequisites: null,
-      milestones: null,
-      energisation: null,
-      subsystems: [],
-      tbcSection: null,
-      root: null
-    };
-
-    // Find root element
-    const rootElement = wbsElements.find(el => !el.parent_wbs_id || el.parent_wbs_id === '');
-    if (rootElement) {
-      parentStructures.root = rootElement;
-      console.log(`🏠 Found root element: "${rootElement.wbs_name}"`);
-    }
-
-    // Analyze each element for parent patterns
-    wbsElements.forEach(element => {
-      const name = element.wbs_name || '';
-      
-      // Check for Prerequisites pattern
-      if (this.patterns.prerequisites.test(name)) {
-        parentStructures.prerequisites = element;
-        console.log(`📋 Found Prerequisites: "${name}" (ID: ${element.wbs_id})`);
-      }
-      
-      // Check for Milestones pattern
-      else if (this.patterns.milestones.test(name)) {
-        parentStructures.milestones = element;
-        console.log(`🎯 Found Milestones: "${name}" (ID: ${element.wbs_id})`);
-      }
-      
-      // Check for Energisation pattern
-      else if (this.patterns.energisation.test(name)) {
-        parentStructures.energisation = element;
-        console.log(`⚡ Found Energisation: "${name}" (ID: ${element.wbs_id})`);
-      }
-      
-      // Check for Subsystem pattern (S1, S2, S3...)
-      else if (this.patterns.subsystem.test(name)) {
-        const match = name.match(this.patterns.subsystem);
-        const subsystemInfo = {
-          element: element,
-          subsystemNumber: parseInt(match[1]),
-          zoneCode: match[2],
-          fullName: name
-        };
-        parentStructures.subsystems.push(subsystemInfo);
-        console.log(`🏢 Found Subsystem S${subsystemInfo.subsystemNumber}: "${name}" (Zone: ${subsystemInfo.zoneCode})`);
-      }
-      
-      // Check for TBC section
-      else if (this.patterns.tbcSection.test(name)) {
-        parentStructures.tbcSection = element;
-        console.log(`⏳ Found TBC Section: "${name}" (ID: ${element.wbs_id})`);
-      }
-    });
-
-    // Sort subsystems by number
-    parentStructures.subsystems.sort((a, b) => a.subsystemNumber - b.subsystemNumber);
-
-    console.log(`✅ Parent Structure Analysis Complete:`);
-    console.log(`   Prerequisites: ${parentStructures.prerequisites ? '✅' : '❌'}`);
-    console.log(`   Milestones: ${parentStructures.milestones ? '✅' : '❌'}`);
-    console.log(`   Energisation: ${parentStructures.energisation ? '✅' : '❌'}`);
-    console.log(`   Subsystems: ${parentStructures.subsystems.length} found`);
-    console.log(`   TBC Section: ${parentStructures.tbcSection ? '✅' : '❌'}`);
-
-    return parentStructures;
+    console.log('🔍 Enhanced Parent Structure Manager: Analyzing patterns');
+    return new XERParser().identifyParentStructuresFixed(wbsElements);
   }
 
   /**
-   * Find the next available subsystem number
-   * @param {Array} existingSubsystems - Array of existing subsystem info
-   * @returns {number} - Next available subsystem number
+   * Find next available subsystem number
    */
   findNextSubsystemNumber(existingSubsystems) {
     if (existingSubsystems.length === 0) return 1;
@@ -340,17 +557,14 @@ export class ParentStructureManager {
     const numbers = existingSubsystems.map(s => s.subsystemNumber);
     const nextNumber = Math.max(...numbers) + 1;
     
-    console.log(`🔢 Next subsystem number: S${nextNumber}`);
+    console.log(`🔢 FIXED: Next subsystem number: S${nextNumber}`);
     return nextNumber;
   }
 
   /**
    * Extract zone code from subsystem name
-   * @param {string} subsystemName - Full subsystem name
-   * @returns {string} - Extracted zone code (e.g., "+Z02")
    */
   extractZoneCode(subsystemName) {
-    // Look for patterns like "+Z01", "Z02", "+Z001"
     const zonePatterns = [
       /([+]?Z\d+)/i,
       /Zone\s*(\d+)/i,
@@ -361,31 +575,27 @@ export class ParentStructureManager {
       const match = subsystemName.match(pattern);
       if (match) {
         let zoneCode = match[1];
-        // Ensure proper format with + prefix
         if (!zoneCode.startsWith('+') && zoneCode.startsWith('Z')) {
           zoneCode = '+' + zoneCode;
         }
-        console.log(`🔍 Extracted zone code: "${zoneCode}" from "${subsystemName}"`);
+        console.log(`🔍 FIXED: Extracted zone code: "${zoneCode}" from "${subsystemName}"`);
         return zoneCode;
       }
     }
 
-    // Default: extract any numeric pattern and format as zone
     const numMatch = subsystemName.match(/(\d+)/);
     if (numMatch) {
       const zoneCode = `+Z${numMatch[1].padStart(2, '0')}`;
-      console.log(`🔍 Generated zone code: "${zoneCode}" from "${subsystemName}"`);
+      console.log(`🔍 FIXED: Generated zone code: "${zoneCode}" from "${subsystemName}"`);
       return zoneCode;
     }
 
-    console.log(`⚠️ Could not extract zone code from: "${subsystemName}"`);
+    console.log(`⚠️ FIXED: Could not extract zone code from: "${subsystemName}"`);
     return '+Z??';
   }
 
   /**
-   * Validate parent structure completeness
-   * @param {Object} parentStructures - Identified parent structures
-   * @returns {Object} - Validation results with warnings/errors
+   * Enhanced validation with detailed feedback
    */
   validateParentStructures(parentStructures) {
     const validation = {
@@ -395,7 +605,6 @@ export class ParentStructureManager {
       recommendations: []
     };
 
-    // Check for missing critical structures
     if (!parentStructures.prerequisites) {
       validation.warnings.push('No "P | Pre-Requisites" section found');
       validation.recommendations.push('Consider adding Prerequisites section for proper subsystem dependencies');
@@ -411,15 +620,7 @@ export class ParentStructureManager {
       validation.isValid = false;
     }
 
-    // Check subsystem numbering consistency
-    const expectedNumbers = Array.from({length: parentStructures.subsystems.length}, (_, i) => i + 1);
-    const actualNumbers = parentStructures.subsystems.map(s => s.subsystemNumber).sort((a, b) => a - b);
-    
-    if (JSON.stringify(expectedNumbers) !== JSON.stringify(actualNumbers)) {
-      validation.warnings.push('Subsystem numbering has gaps or inconsistencies');
-    }
-
-    console.log(`🔍 Parent Structure Validation: ${validation.isValid ? 'PASSED' : 'FAILED'}`);
+    console.log(`🔍 FIXED: Parent Structure Validation: ${validation.isValid ? 'PASSED' : 'FAILED'}`);
     console.log(`   Warnings: ${validation.warnings.length}`);
     console.log(`   Errors: ${validation.errors.length}`);
 
@@ -432,58 +633,60 @@ export class ParentStructureManager {
 // ============================================================================
 
 /**
- * Create a new XER Parser instance
- * @returns {XERParser} - New parser instance
+ * Create a new enhanced XER Parser instance
  */
 export const createXERParser = () => {
   return new XERParser();
 };
 
 /**
- * Create a new Parent Structure Manager instance
- * @returns {ParentStructureManager} - New manager instance
+ * Create a new enhanced Parent Structure Manager instance
  */
 export const createParentStructureManager = () => {
   return new ParentStructureManager();
 };
 
 /**
- * Quick function to process XER file and identify parent structures
- * @param {File} file - XER or CSV file
- * @returns {Object} - Complete analysis results
+ * FIXED: Quick function to process XER file with enhanced error handling
  */
 export const analyzeXERFile = async (file) => {
   const parser = new XERParser();
   const structureManager = new ParentStructureManager();
   
-  console.log('🚀 Starting comprehensive XER file analysis');
+  console.log('🚀 FIXED: Starting comprehensive XER file analysis with enhanced parsing');
   
-  // Parse the file
-  const parseResults = await parser.parseXERFile(file);
-  
-  // Identify parent structures
-  const parentStructures = structureManager.identifyParentStructures(parseResults.wbsElements);
-  
-  // Validate structures
-  const validation = structureManager.validateParentStructures(parentStructures);
-  
-  const analysis = {
-    ...parseResults,
-    parentStructures,
-    validation,
-    summary: {
-      projectName: parseResults.projectInfo.projectName,
-      totalElements: parseResults.totalElements,
-      subsystemCount: parentStructures.subsystems.length,
-      nextSubsystemNumber: structureManager.findNextSubsystemNumber(parentStructures.subsystems),
-      hasPrerequisites: !!parentStructures.prerequisites,
-      hasMilestones: !!parentStructures.milestones,
-      validationPassed: validation.isValid
-    }
-  };
-  
-  console.log('✅ XER file analysis complete');
-  console.log(`📊 Summary: ${analysis.summary.totalElements} elements, ${analysis.summary.subsystemCount} subsystems`);
-  
-  return analysis;
+  try {
+    // Parse the file
+    const parseResults = await parser.parseXERFile(file);
+    
+    // Identify parent structures (already done in parseXERFile)
+    const parentStructures = parseResults.parentStructures;
+    
+    // Validate structures
+    const validation = structureManager.validateParentStructures(parentStructures);
+    
+    const analysis = {
+      ...parseResults,
+      parentStructures,
+      validation,
+      summary: {
+        projectName: parseResults.projectInfo.projectName,
+        totalElements: parseResults.totalElements,
+        subsystemCount: parentStructures.subsystems.length,
+        nextSubsystemNumber: structureManager.findNextSubsystemNumber(parentStructures.subsystems),
+        hasPrerequisites: !!parentStructures.prerequisites,
+        hasMilestones: !!parentStructures.milestones,
+        validationPassed: validation.isValid
+      }
+    };
+    
+    console.log('✅ FIXED: XER file analysis complete with enhanced processing');
+    console.log(`📊 Summary: ${analysis.summary.totalElements} elements, ${analysis.summary.subsystemCount} subsystems`);
+    
+    return analysis;
+    
+  } catch (error) {
+    console.error('🚫 FIXED: XER Analysis failed:', error);
+    throw error;
+  }
 };
