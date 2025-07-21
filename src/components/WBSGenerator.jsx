@@ -461,87 +461,15 @@ const StartNewProjectMode = ({ projectName, setProjectName, fileInputRef, handle
   </div>
 );
 
-<Circle className="w-3 h-3 mr-2 ml-1" style={{ color: rjeColors.mediumGreen }} />
-          )}
-          
-          {level === 0 ? (
-            <Folder className="w-4 h-4 mr-2" style={{ color: rjeColors.darkBlue }} />
-          ) : level === 1 ? (
-            <FolderOpen className="w-4 h-4 mr-2" style={{ color: rjeColors.darkGreen }} />
-          ) : (
-            <Settings2 className="w-3 h-3 mr-2" style={{ color: rjeColors.teal }} />
-          )}
-          
-          <span className="text-sm font-medium">{node.name}</span>
-          {node.count && (
-            <span className="ml-2 px-2 py-0.5 bg-gray-200 text-xs rounded-full">
-              {node.count}
-            </span>
-          )}
-        </div>
-        
-        {hasChildren && isExpanded && (
-          <div className="ml-2">
-            {node.children.map((child, idx) => 
-              renderStructureNode(child, level + 1, `${nodeId}_${idx}`)
-            )}
-          </div>
-        )}
-      </div>
-    );
-  };
-
-  // Process project state into displayable structure
-  const getStructureData = () => {
-    if (!projectState) return null;
-    
-    const structure = {
-      name: projectState.projectName || "Loaded Project",
-      children: [
-        {
-          name: "📋 Prerequisites",
-          count: projectState.parentStructures?.prerequisites ? 1 : 0,
-          children: projectState.parentStructures?.prerequisites ? [{
-            name: `${projectState.parentStructures.prerequisites.wbs_name}`,
-            children: []
-          }] : []
-        },
-        {
-          name: "🏁 Milestones", 
-          count: projectState.parentStructures?.milestones ? 1 : 0,
-          children: projectState.parentStructures?.milestones ? [{
-            name: `${projectState.parentStructures.milestones.wbs_name}`,
-            children: []
-          }] : []
-        },
-        {
-          name: "⚡ Energisation",
-          count: projectState.parentStructures?.energisation ? 1 : 0,
-          children: projectState.parentStructures?.energisation ? [{
-            name: `${projectState.parentStructures.energisation.wbs_name}`,
-            children: []
-          }] : []
-        },
-        {
-          name: "🏗️ Existing Subsystems",
-          count: projectState.parentStructures?.subsystems?.length || 0,
-          children: (projectState.parentStructures?.subsystems || []).map(subsystem => ({
-            name: `${subsystem.element.wbs_name}`,
-            count: subsystem.categories?.length || 0,
-            children: (subsystem.categories || []).map(category => ({
-              name: `${category.element.wbs_name}`,
-              count: category.equipment?.length || 0,
-              children: []
-            }))
-          }))
-        }
-      ]
-    };
-    
-    return structure;
-  };
-
-  const structureData = getStructureData();
+// Enhanced Continue Project Mode Component with P6-Style WBS Structure Visualization
+const ContinueProjectMode = ({ 
+  projectState, 
+  projectStateInputRef, 
+  handleWBSFileUpload, 
+  handleFileUpload, 
+  isProcessing,
+  rjeColors 
+}) => {
 
   return (
     <div className="bg-white rounded-xl shadow-lg p-6">
