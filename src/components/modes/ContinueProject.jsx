@@ -34,7 +34,7 @@ const ProjectSelectionUI = () => {
       // FIXED: Use real function and store full analysis result
       const analysis = await getAvailableProjects(file);
       
-      setAnalysisResult(analysis); // FIXED: Store complete analysis result
+      setAnalysisResult(analysis); // Store complete analysis result
       setAvailableProjects(analysis.availableProjects);
       
       if (analysis.requiresProjectSelection) {
@@ -42,7 +42,8 @@ const ProjectSelectionUI = () => {
         console.log('Found projects - user selection required');
       } else {
         setSelectedProject(analysis.availableProjects[0]);
-        await processProject(analysis.availableProjects[0].proj_id);
+        // FIXED: Pass analysis directly instead of relying on state
+        await processProject(analysis.availableProjects[0].proj_id, analysis);
       }
 
     } catch (error) {
@@ -53,15 +54,26 @@ const ProjectSelectionUI = () => {
     }
   };
 
-  const processProject = async (projectId) => {
+  const processProject = async (projectId, analysisData = null) => {
     setIsProcessing(true);
     setError(null);
 
     try {
       console.log('Processing selected project:', projectId);
       
-      // FIXED: Pass the complete analysisResult instead of constructing it
-      const results = await processSelectedProject(analysisResult, projectId);
+      // FIXED: Use provided analysisData or fall back to state
+      const dataToUse = analysisData || analysisResult;
+      
+      console.log('DEBUG: analysisData provided:', !!analysisData);
+      console.log('DEBUG: analysisResult from state:', !!analysisResult);
+      console.log('DEBUG: dataToUse available:', !!dataToUse);
+      console.log('DEBUG: dataToUse has parser:', !!(dataToUse?.parser));
+      
+      if (!dataToUse) {
+        throw new Error('No analysis data available for processing');
+      }
+      
+      const results = await processSelectedProject(dataToUse, projectId);
       
       setProjectResults(results);
       setStep('complete');
@@ -78,6 +90,7 @@ const ProjectSelectionUI = () => {
 
   const handleProjectSelect = (project) => {
     setSelectedProject(project);
+    // Use state-based analysisResult since we're in project selection step
     processProject(project.proj_id);
   };
 
