@@ -112,41 +112,7 @@ const WBSGenerator = () => {
     }
   };
 
-  // Enhanced WBS structure file upload (for continue/missing modes) with XER support
-  const handleWBSFileUpload = async (event, isForMissingEquipment = false) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    try {
-      console.log(`🚀 Processing WBS file: ${file.name}`);
-      
-      let wbsData;
-      
-      // Check if it's an XER file and use enhanced processing for continue project mode
-      if (file.name.toLowerCase().endsWith('.xer') && !isForMissingEquipment) {
-        try {
-          // Dynamic import of XER processing functionality
-          const { processXERFile } = await import('./utils/continueProjectUtils.js');
-          wbsData = await processXERFile(file);
-          console.log('✅ XER file processed with enhanced continue project logic');
-        } catch (xerError) {
-          console.warn('XER processing failed, falling back to standard processing:', xerError);
-          wbsData = await processWBSFile(file);
-        }
-      } else {
-        // Use standard Excel/CSV processing
-        wbsData = await processWBSFile(file);
-      }
-      
-      if (isForMissingEquipment) {
-        setMissingEquipmentConfig(prev => ({
-          ...prev,
-          existingWbsNodes: wbsData.wbsNodes,
-          existingProjectName: wbsData.projectName
-        }));
-        console.log('✅ WBS structure loaded for missing equipment mode');
-      } else {
-        // For continue mode with enhanced data
+// For continue mode with enhanced data
         const loadedState = {
           ...wbsData,
           timestamp: new Date().toISOString()
@@ -174,12 +140,12 @@ const WBSGenerator = () => {
       
       if (uploadMode === uploadModes.CONTINUE_PROJECT && projectState) {
         try {
-          // Use enhanced continue project logic
-          const { generateContinueProjectWBS } = await import('./utils/continueProjectUtils.js');
-          result = generateContinueProjectWBS(data, projectState);
-          console.log('✅ Using enhanced continue project WBS generation');
+          // Use existing continue project integration logic
+          const { processContinueProjectWBS } = await import('./utils/continueProjectIntegration.js');
+          result = processContinueProjectWBS(data, projectState, projectName);
+          console.log('✅ Using existing continue project integration');
         } catch (continueError) {
-          console.warn('Continue project logic failed, falling back to standard generation:', continueError);
+          console.warn('Continue project integration failed, falling back to standard generation:', continueError);
           result = generateWBS(data, projectName, projectState, uploadMode);
         }
       } else {
