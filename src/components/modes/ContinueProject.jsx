@@ -1,21 +1,30 @@
-// src/components/modes/ContinueProject.jsx
-// Fixed version without problematic imports - will work immediately
+// src/components/modes/ContinueProject.jsx - ENHANCED VERSION
+// Builds on your excellent wizard approach + adds equipment integration
 
 import React, { useState, useRef } from 'react';
-import { Upload, CheckCircle, Clock, Building2, AlertTriangle, Plus } from 'lucide-react';
+import { Upload, CheckCircle, Clock, Building2, AlertTriangle, Plus, FileText, Loader } from 'lucide-react';
 import { getAvailableProjects, processSelectedProject } from '../utils/xerParser';
 
-const ContinueProject = () => {
+const ContinueProject = ({ onWBSGenerated }) => {
   const [step, setStep] = useState('upload');
   const [availableProjects, setAvailableProjects] = useState([]);
   const [selectedProject, setSelectedProject] = useState(null);
   const [analysisResult, setAnalysisResult] = useState(null);
   const [projectResults, setProjectResults] = useState(null);
+  
+  // NEW: Equipment integration state
+  const [equipmentFile, setEquipmentFile] = useState(null);
+  const [equipmentData, setEquipmentData] = useState(null);
+  const [isProcessingEquipment, setIsProcessingEquipment] = useState(false);
+  const [isIntegrating, setIsIntegrating] = useState(false);
+  const [integrationResult, setIntegrationResult] = useState(null);
+  
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState(null);
 
   const fileInputRef = useRef(null);
+  const equipmentFileInputRef = useRef(null); // NEW
 
   const colors = {
     darkBlue: '#1e3a8a',
@@ -24,6 +33,7 @@ const ContinueProject = () => {
     orange: '#f97316'
   };
 
+  // EXISTING: Your XER file handling (unchanged)
   const handleFileUpload = async (event) => {
     const file = event.target.files[0];
     if (!file) return;
@@ -33,14 +43,11 @@ const ContinueProject = () => {
 
     try {
       console.log('Analyzing XER file for available projects...');
-      
-      // Use REAL XER parser functions
       const analysis = await getAvailableProjects(file);
       
       setAnalysisResult(analysis);
       setAvailableProjects(analysis.availableProjects);
       
-      // ALWAYS require manual project selection (no auto-selection)
       if (analysis.availableProjects.length > 0) {
         setStep('selecting');
         console.log(`Found ${analysis.availableProjects.length} projects - manual selection required`);
@@ -56,26 +63,22 @@ const ContinueProject = () => {
     }
   };
 
-  // FIX: Modified to accept analysis parameter to avoid state timing issues
+  // EXISTING: Your project processing (unchanged)
   const processProject = async (projectId, analysis = null) => {
     setIsProcessing(true);
     setError(null);
 
     try {
       console.log('Processing selected project with direct data:', projectId);
-      
-      // FIX: Use passed analysis or state (for button clicks)
       const analysisToUse = analysis || analysisResult;
       
       if (!analysisToUse) {
         throw new Error('Analysis result is null - state timing issue');
       }
       
-      // Use REAL XER parser functions
       const results = await processSelectedProject(analysisToUse, projectId);
-      
       setProjectResults(results);
-      setStep('complete');
+      setStep('equipment'); // CHANGED: Go to equipment step instead of complete
       
       console.log('Project processing complete:', results.totalElements, 'elements processed');
 
@@ -89,22 +92,97 @@ const ContinueProject = () => {
 
   const handleProjectSelect = (project) => {
     setSelectedProject(project);
-    processProject(project.proj_id); // This uses state since user clicked, state is available
+    processProject(project.proj_id);
   };
 
-  // TEMPORARY: Simple alert until EquipmentAddition component is ready
-  const handleAddEquipment = () => {
-    console.log('🎯 Starting equipment addition workflow');
-    console.log('📊 Project Data Ready:', projectResults);
+  // NEW: Equipment file processing
+  const handleEquipmentFileUpload = async (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    setIsProcessingEquipment(true);
+    setError(null);
     
-    // For now, show a more detailed alert with next steps
-    alert(
-      '🎯 Equipment Addition Ready!\n\n' +
-      `Project: ${projectResults.projectInfo.projectName}\n` +
-      `Existing Subsystems: ${projectResults.parentStructures.subsystems?.length || 0}\n` +
-      `Next Subsystem: S${(projectResults.parentStructures.subsystems?.length || 0) + 1}\n\n` +
-      'Equipment Addition component is being prepared...'
-    );
+    try {
+      console.log('📁 Processing equipment file:', file.name);
+      
+      // Import equipment processor
+      const { processEquipmentFile } = await import('../utils/equipmentFileProcessor.js');
+      const processedData = await processEquipmentFile(file);
+      
+      console.log('📊 Equipment processing complete:', {
+        total: processedData.length,
+        commissioned: processedData.filter(item => item.commissioning === 'Y').length,
+        tbc: processedData.filter(item => item.commissioning === 'TBC').length
+      });
+      
+      if (processedData.length === 0) {
+        throw new Error('No valid equipment found in file');
+      }
+      
+      setEquipmentFile(file);
+      setEquipmentData(processedData);
+      
+    } catch (error) {
+      console.error('❌ Equipment processing error:', error);
+      setError(`Equipment Processing Error: ${error.message}`);
+    } finally {
+      setIsProcessingEquipment(false);
+    }
+  };
+
+  // NEW: Execute the actual integration
+  const executeIntegration = async () => {
+    if (!projectResults || !equipmentData) {
+      setError('Both project analysis and equipment data are required');
+      return;
+    }
+
+    setIsIntegrating(true);
+    setError(null);
+    
+    try {
+      console.log('🚀 Starting integration process');
+      
+      // Extract subsystem name from equipment data
+      const subsystemName = equipmentData.find(item => item.subsystem)?.subsystem || 'New Subsystem';
+      
+      // Import the enhanced continue project integration
+      const { processContinueProjectWBS } = await import('../utils/continueProjectIntegration.js');
+      
+      // Execute integration using your zone code extraction
+      const result = processContinueProjectWBS(
+        projectResults.wbsElements || [],
+        equipmentData,
+        projectResults.projectInfo.projectName,
+        subsystemName
+      );
+      
+      console.log('✅ Integration successful:', result);
+      setIntegrationResult(result);
+      
+      // ENHANCED: Create proper WBS structure for rendering
+      const wbsStructure = {
+        allNodes: [...(projectResults.wbsElements || []), ...result.newElements],
+        newNodes: result.newElements,
+        projectName: projectResults.projectInfo.projectName,
+        mode: 'continue',
+        integrationSummary: result.summary
+      };
+      
+      // Trigger WBS generation in parent component
+      if (onWBSGenerated) {
+        onWBSGenerated(wbsStructure);
+      }
+      
+      setStep('complete');
+      
+    } catch (error) {
+      console.error('❌ Integration error:', error);
+      setError(`Integration Error: ${error.message}`);
+    } finally {
+      setIsIntegrating(false);
+    }
   };
 
   const handleStartOver = () => {
@@ -113,12 +191,19 @@ const ContinueProject = () => {
     setSelectedProject(null);
     setAnalysisResult(null);
     setProjectResults(null);
+    setEquipmentFile(null);
+    setEquipmentData(null);
+    setIntegrationResult(null);
     setError(null);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
+    if (equipmentFileInputRef.current) {
+      equipmentFileInputRef.current.value = '';
+    }
   };
 
+  // EXISTING: Your upload step (unchanged)
   const renderUploadStep = () => (
     <div className="bg-white rounded-xl shadow-lg p-8">
       <h2 className="text-2xl font-bold mb-6" style={{ color: colors.darkBlue }}>
@@ -188,6 +273,7 @@ const ContinueProject = () => {
     </div>
   );
 
+  // EXISTING: Your project selection (unchanged)
   const renderProjectSelection = () => (
     <div className="bg-white rounded-xl shadow-lg p-8">
       <h2 className="text-2xl font-bold mb-6" style={{ color: colors.darkBlue }}>
@@ -297,114 +383,180 @@ const ContinueProject = () => {
     </div>
   );
 
-  const renderResults = () => {
-    const { projectInfo, parentStructures, totalElements, validation } = projectResults;
+  // NEW: Equipment upload step
+  const renderEquipmentStep = () => {
+    const { projectInfo, parentStructures, totalElements } = projectResults;
     
     return (
       <div className="bg-white rounded-xl shadow-lg p-8">
         <h2 className="text-2xl font-bold mb-6" style={{ color: colors.darkBlue }}>
-          ✅ Project Analysis Complete
+          📦 Add New Equipment
         </h2>
 
-        <div className="mb-6 p-6 bg-green-50 rounded-lg">
-          <h3 className="text-xl font-semibold mb-4" style={{ color: colors.darkBlue }}>
-            Project: {projectInfo.projectName}
+        {/* Project Summary */}
+        <div className="mb-6 p-4 bg-green-50 rounded-lg">
+          <h3 className="font-semibold text-green-800 mb-2">
+            ✅ Project Loaded: {projectInfo.projectName}
           </h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <p><strong>Project ID:</strong> {projectInfo.projectId}</p>
-              <p><strong>Project Code:</strong> {projectInfo.projectCode}</p>
-              <p><strong>Root WBS ID:</strong> {projectInfo.rootWbsId}</p>
-            </div>
-            <div>
-              <p><strong>Total Elements:</strong> {totalElements}</p>
-              <p><strong>Subsystems Found:</strong> {parentStructures.subsystems?.length || 0}</p>
-              <p><strong>Hierarchy Levels:</strong> {validation?.hasHierarchy ? '✅ Built' : '❌ Failed'}</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="mb-6">
-          <h3 className="text-lg font-semibold mb-4" style={{ color: colors.darkBlue }}>
-            🎯 Parent Structures Identified
-          </h3>
-          <div className="space-y-3">
-            {[
-              { key: 'prerequisites', icon: 'P', name: 'Prerequisites' },
-              { key: 'milestones', icon: 'M', name: 'Milestones' },
-              { key: 'energisation', icon: 'E', name: 'Energisation' },
-              { key: 'tbcSection', icon: 'T', name: 'TBC Section' }
-            ].map(({ key, icon, name }) => (
-              <div key={key} className="flex items-center justify-between p-3 border rounded-lg">
-                <span className="font-medium">{icon} - {name}</span>
-                {parentStructures[key] ? (
-                  <span className="text-green-600 font-medium">
-                    ✅ FOUND: {parentStructures[key].wbs_name}
-                  </span>
-                ) : (
-                  <span className="text-gray-500">❌ Not Found</span>
-                )}
-              </div>
-            ))}
-            
-            <div className="flex items-center justify-between p-3 border rounded-lg">
-              <span className="font-medium">Existing Subsystems</span>
-              <span className="text-green-600 font-medium">
-                ✅ {parentStructures.subsystems?.length || 0} Found: {
-                  parentStructures.subsystems?.map(s => `S${s.subsystemNumber}`).join(', ') || 'None'
-                }
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* SUCCESS STATE - READY FOR NEXT STEP */}
-        <div className="mb-6 p-4 bg-blue-50 rounded-lg">
-          <h4 className="font-semibold text-blue-800 mb-2">🎉 Ready for Equipment Addition!</h4>
-          <p className="text-sm text-blue-700">
-            Your WBS structure has been successfully analyzed. You can now add new equipment
-            and the system will generate intelligent WBS codes that integrate seamlessly 
-            with your existing structure.
+          <p className="text-sm text-green-700">
+            {totalElements} WBS elements • {parentStructures.subsystems?.length || 0} existing subsystems
           </p>
         </div>
 
-        <div className="flex gap-4">
-          <button
-            className="px-6 py-3 text-white rounded-lg font-medium flex items-center gap-2 transition-colors"
-            style={{ backgroundColor: colors.darkGreen }}
-            onClick={handleAddEquipment}
-          >
-            <Plus className="w-5 h-5" />
-            Add Equipment
-          </button>
+        {/* Equipment File Upload */}
+        <div className="border-2 border-dashed rounded-lg p-8 text-center mb-6" 
+             style={{ borderColor: equipmentData ? colors.lightGreen : colors.darkGreen }}>
+          <FileText className="w-12 h-12 mx-auto mb-4" 
+                   style={{ color: equipmentData ? colors.lightGreen : colors.darkGreen }} />
           
+          {equipmentData ? (
+            <div>
+              <h3 className="text-lg font-semibold mb-2 text-green-700">
+                ✅ Equipment File Loaded
+              </h3>
+              <p className="text-gray-600 mb-4">
+                {equipmentData.length} equipment items ready for integration
+              </p>
+              <button
+                onClick={() => equipmentFileInputRef.current?.click()}
+                className="text-sm text-blue-600 hover:text-blue-800"
+              >
+                Change Equipment File
+              </button>
+            </div>
+          ) : (
+            <div>
+              <h3 className="text-lg font-semibold mb-2">Upload Equipment List</h3>
+              <p className="text-gray-600 mb-4">
+                Excel (.xlsx) or CSV file containing new equipment to add
+              </p>
+              <button
+                onClick={() => equipmentFileInputRef.current?.click()}
+                disabled={isProcessingEquipment}
+                className="px-6 py-3 text-white rounded-lg font-medium disabled:opacity-50"
+                style={{ backgroundColor: colors.darkGreen }}
+              >
+                {isProcessingEquipment ? (
+                  <>
+                    <Loader className="w-4 h-4 inline mr-2 animate-spin" />
+                    Processing Equipment...
+                  </>
+                ) : (
+                  <>
+                    <Upload className="w-4 h-4 inline mr-2" />
+                    Choose Equipment File
+                  </>
+                )}
+              </button>
+            </div>
+          )}
+          
+          <input
+            ref={equipmentFileInputRef}
+            type="file"
+            accept=".xlsx,.xls,.csv"
+            onChange={handleEquipmentFileUpload}
+            className="hidden"
+          />
+        </div>
+
+        {/* Integration Button */}
+        {equipmentData && (
+          <div className="text-center mb-6">
+            <button
+              onClick={executeIntegration}
+              disabled={isIntegrating}
+              className="px-8 py-3 text-white rounded-lg font-medium text-lg disabled:opacity-50"
+              style={{ backgroundColor: colors.orange }}
+            >
+              {isIntegrating ? (
+                <>
+                  <Loader className="w-5 h-5 inline mr-2 animate-spin" />
+                  Integrating Equipment...
+                </>
+              ) : (
+                <>
+                  <Plus className="w-5 h-5 inline mr-2" />
+                  Integrate Equipment into WBS
+                </>
+              )}
+            </button>
+          </div>
+        )}
+
+        <div className="flex gap-3">
+          <button
+            onClick={() => setStep('selecting')}
+            className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+          >
+            Back to Project Selection
+          </button>
           <button
             onClick={handleStartOver}
-            className="px-4 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+            className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
           >
-            Analyze Different Project
+            Start Over
           </button>
         </div>
 
-        {/* DEBUG INFO */}
-        <div className="mt-8 p-4 bg-gray-50 rounded-lg">
-          <h4 className="font-semibold text-gray-700 mb-2">🔧 Technical Details</h4>
-          <div className="text-xs text-gray-600 space-y-1">
-            <p>✅ Hierarchy levels: {projectResults.hierarchy?.size || 0} parent groups</p>
-            <p>✅ Parser validation: {validation?.isValid ? 'PASSED' : 'FAILED'}</p>
-            <p>✅ WBS structure integrity: Validated</p>
-            <p>✅ Ready for subsystem addition: YES</p>
-            <p>🎯 Next subsystem number: S{(parentStructures.subsystems?.length || 0) + 1}</p>
+        {error && (
+          <div className="mt-4 p-4 bg-red-50 border-l-4 border-red-500 rounded">
+            <div className="flex">
+              <AlertTriangle className="w-5 h-5 text-red-500 mr-2" />
+              <div>
+                <p className="font-medium text-red-800">Error</p>
+                <p className="text-sm text-red-700">{error}</p>
+              </div>
+            </div>
           </div>
-        </div>
+        )}
       </div>
     );
   };
+
+  // ENHANCED: Complete step showing integration results
+  const renderResults = () => (
+    <div className="bg-white rounded-xl shadow-lg p-8">
+      <h2 className="text-2xl font-bold mb-6" style={{ color: colors.darkBlue }}>
+        🎉 Integration Complete!
+      </h2>
+
+      <div className="mb-6 p-6 bg-green-50 rounded-lg">
+        <h3 className="text-xl font-semibold mb-4" style={{ color: colors.darkBlue }}>
+          Successfully Added New Subsystem
+        </h3>
+        {integrationResult && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <p><strong>New WBS Elements:</strong> {integrationResult.summary.totalElements}</p>
+              <p><strong>Equipment Processed:</strong> {integrationResult.summary.equipment}</p>
+              <p><strong>Categories Created:</strong> {integrationResult.summary.categories}</p>
+            </div>
+            <div>
+              <p><strong>Prerequisite Entries:</strong> {integrationResult.summary.prerequisiteEntries}</p>
+              <p><strong>Subsystems Added:</strong> {integrationResult.summary.subsystems}</p>
+              <p><strong>Integration Status:</strong> ✅ Success</p>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="flex gap-4">
+        <button
+          onClick={handleStartOver}
+          className="px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+        >
+          Add Another Subsystem
+        </button>
+      </div>
+    </div>
+  );
 
   return (
     <div className="max-w-4xl mx-auto p-6">
       {step === 'upload' && renderUploadStep()}
       {step === 'selecting' && renderProjectSelection()}
+      {step === 'equipment' && renderEquipmentStep()}
       {step === 'complete' && renderResults()}
     </div>
   );
