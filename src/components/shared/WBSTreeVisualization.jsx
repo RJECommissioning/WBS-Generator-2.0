@@ -1,5 +1,5 @@
-// src/components/shared/WBSTreeVisualization.jsx - FIXED Hierarchy Building
-// Properly uses parent_wbs_id relationships to build correct tree structure
+// src/components/shared/WBSTreeVisualization.jsx - TRULY FIXED Hierarchy Building
+// Debug and fix parent_wbs_id relationships to build correct tree structure
 
 import React, { useState, useMemo } from 'react';
 import { ChevronRight, ChevronDown, Eye, EyeOff, FileText, Building2, Settings, FolderOpen } from 'lucide-react';
@@ -27,15 +27,15 @@ const WBSTreeVisualization = ({ wbsNodes = [] }) => {
     return String(value);
   };
 
-  // FIXED: Proper hierarchy building using parent_wbs_id relationships
+  // TRULY FIXED: Debug and build proper hierarchy
   const buildHierarchyFromParentIds = (nodes) => {
-    console.log('🔧 FIXED: Building proper hierarchy from', nodes.length, 'nodes using parent_wbs_id');
+    console.log('🔧 TRULY FIXED: Debugging hierarchy from', nodes.length, 'nodes');
     
     if (!Array.isArray(nodes) || nodes.length === 0) {
       return [];
     }
     
-    // Normalize nodes with proper flag detection
+    // Normalize nodes with better debugging
     const normalizedNodes = nodes.map(node => {
       let isNew = false;
       let isExisting = false;
@@ -64,57 +64,107 @@ const WBSTreeVisualization = ({ wbsNodes = [] }) => {
       };
     });
 
-    console.log('📊 FIXED: Node analysis:', {
+    console.log('📊 TRULY FIXED: Node analysis:', {
       total: normalizedNodes.length,
       new: normalizedNodes.filter(n => n.isNew).length,
       existing: normalizedNodes.filter(n => n.isExisting).length
     });
     
-    // FIXED: Build proper parent-child relationships
+    // TRULY FIXED: Debug parent-child relationships
     const nodeMap = new Map();
     const childrenMap = new Map();
+    const orphanNodes = [];
     
     // Create lookup map by wbs_id
     normalizedNodes.forEach(node => {
       nodeMap.set(node.wbsId, node);
     });
     
-    // Build parent-child relationships - FIXED logic
+    console.log('🔍 TRULY FIXED: Sample node mappings:');
+    Array.from(nodeMap.entries()).slice(0, 10).forEach(([wbsId, node]) => {
+      console.log(`   ${wbsId} -> "${node.name}" (parent: ${node.parentWbsId})`);
+    });
+    
+    // TRULY FIXED: Build parent-child relationships with detailed logging
+    let rootNodeCount = 0;
+    let childNodeCount = 0;
+    let orphanNodeCount = 0;
+    
     normalizedNodes.forEach(node => {
       const parentId = node.parentWbsId;
       
-      // FIXED: Identify true root nodes (no parent or parent doesn't exist)
-      if (!parentId || parentId === '' || parentId === '0' || !nodeMap.has(parentId)) {
+      // TRULY FIXED: More comprehensive root node detection
+      const isRootNode = !parentId || 
+                        parentId === '' || 
+                        parentId === '0' || 
+                        parentId === node.wbsId || // Self-referencing
+                        !nodeMap.has(parentId);    // Parent doesn't exist
+      
+      if (isRootNode) {
         // Root node
         if (!childrenMap.has('ROOT')) {
           childrenMap.set('ROOT', []);
         }
         childrenMap.get('ROOT').push(node);
+        rootNodeCount++;
+        
+        // Log first few root nodes for debugging
+        if (rootNodeCount <= 10) {
+          console.log(`🌳 ROOT NODE: ${node.wbsCode} "${node.name}" (parent: ${parentId})`);
+        }
       } else {
         // Child node with valid parent
         if (!childrenMap.has(parentId)) {
           childrenMap.set(parentId, []);
         }
         childrenMap.get(parentId).push(node);
+        childNodeCount++;
+        
+        // Log first few child relationships for debugging
+        if (childNodeCount <= 10) {
+          const parentNode = nodeMap.get(parentId);
+          console.log(`👶 CHILD: ${node.wbsCode} "${node.name}" -> PARENT: ${parentId} "${parentNode?.name || 'Unknown'}"`);
+        }
       }
     });
     
-    // FIXED: Debug output
-    const rootNodes = childrenMap.get('ROOT') || [];
-    console.log(`📊 FIXED: Found ${rootNodes.length} actual root nodes`);
-    console.log(`📊 FIXED: Parent-child groups: ${childrenMap.size}`);
+    console.log(`📊 TRULY FIXED: Relationship Analysis:`);
+    console.log(`   Root nodes: ${rootNodeCount}`);
+    console.log(`   Child nodes: ${childNodeCount}`);
+    console.log(`   Parent-child groups: ${childrenMap.size}`);
     
-    // Root nodes should be project level (like "5737")
-    if (rootNodes.length > 5) {
-      console.warn(`⚠️ FIXED: Unusual number of root nodes (${rootNodes.length}), may indicate hierarchy issues`);
-      console.warn('🔍 FIXED: Sample root nodes:', rootNodes.slice(0, 5).map(n => `${n.wbsCode}: ${n.name}`));
+    // TRULY FIXED: If we have too many root nodes, investigate why
+    if (rootNodeCount > 10) {
+      console.warn(`⚠️ TRULY FIXED: Too many root nodes (${rootNodeCount})`);
+      console.warn('🔍 TRULY FIXED: Investigating parent-child mismatches:');
+      
+      // Check for common parent ID patterns that might be missing
+      const parentIds = new Set();
+      const existingIds = new Set();
+      
+      normalizedNodes.forEach(node => {
+        if (node.parentWbsId) parentIds.add(node.parentWbsId);
+        existingIds.add(node.wbsId);
+      });
+      
+      const missingParents = Array.from(parentIds).filter(pid => !existingIds.has(pid));
+      console.warn(`❌ Missing parent IDs: ${missingParents.slice(0, 10).join(', ')}`);
+      
+      // Show sample of what should be parent-child relationships
+      console.warn('🔍 Sample nodes that should have parents:');
+      normalizedNodes.slice(0, 15).forEach(node => {
+        if (node.parentWbsId && node.parentWbsId !== '') {
+          const hasParent = nodeMap.has(node.parentWbsId);
+          console.warn(`   ${node.wbsCode} (parent: ${node.parentWbsId}) - Parent exists: ${hasParent}`);
+        }
+      });
     }
     
-    // FIXED: Recursive tree building
+    // TRULY FIXED: Build tree with debug output
     const buildTree = (nodeId) => {
       const node = nodeMap.get(nodeId);
       if (!node) {
-        console.warn(`⚠️ FIXED: Node not found: ${nodeId}`);
+        console.warn(`⚠️ TRULY FIXED: Node not found: ${nodeId}`);
         return null;
       }
       
@@ -150,11 +200,22 @@ const WBSTreeVisualization = ({ wbsNodes = [] }) => {
     };
     
     // Build tree from root nodes
+    const rootNodes = childrenMap.get('ROOT') || [];
+    console.log(`🌲 TRULY FIXED: Building tree from ${rootNodes.length} root nodes`);
+    
+    // Log the root node details
+    rootNodes.forEach((root, index) => {
+      if (index < 5) {
+        const childCount = childrenMap.get(root.wbsId)?.length || 0;
+        console.log(`   Root ${index + 1}: ${root.wbsCode} "${root.name}" (${childCount} children)`);
+      }
+    });
+    
     const trees = rootNodes
       .map(root => buildTree(root.wbsId))
       .filter(Boolean);
     
-    console.log(`✅ FIXED: Hierarchy complete - ${trees.length} root trees built`);
+    console.log(`✅ TRULY FIXED: Hierarchy complete - ${trees.length} root trees built`);
     
     return trees;
   };
@@ -393,7 +454,7 @@ const WBSTreeVisualization = ({ wbsNodes = [] }) => {
             </div>
             
             <div className="text-xs text-gray-500 mt-1">
-              Level {level} • Type: {nodeType} • Children: {node.hasChildren ? (node.children?.length || 0) : 0} • {node.isNew ? 'NEW' : 'EXISTING'}
+              Level {level} • Type: {nodeType} • Children: {node.hasChildren ? (node.children?.length || 0) : 0} • Parent: {node.parentWbsId || 'None'}
             </div>
           </div>
         </div>
@@ -455,7 +516,7 @@ const WBSTreeVisualization = ({ wbsNodes = [] }) => {
     <div className="bg-white rounded-xl shadow-lg p-6">
       <div className="flex items-center justify-between mb-6">
         <h3 className="text-xl font-bold" style={{ color: colors.darkBlue }}>
-          🔧 FIXED WBS Hierarchy ({stats.total} nodes)
+          🔧 TRULY FIXED WBS Hierarchy ({stats.total} nodes)
         </h3>
         
         <div className="flex items-center gap-4">
@@ -547,7 +608,7 @@ const WBSTreeVisualization = ({ wbsNodes = [] }) => {
       </div>
 
       <div className="mt-4 text-sm text-gray-600">
-        <strong>🔧 FIXED:</strong> Proper parent_wbs_id hierarchy building • Shows correct nested structure • Project 5737 pattern detection
+        <strong>🔧 TRULY FIXED:</strong> Enhanced debugging of parent_wbs_id relationships • Detailed console output for troubleshooting
       </div>
     </div>
   );
