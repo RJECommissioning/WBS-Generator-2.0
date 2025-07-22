@@ -1,5 +1,5 @@
-// src/components/modes/ContinueProject.jsx - ENHANCED VERSION
-// Builds on your excellent wizard approach + adds equipment integration
+// src/components/modes/ContinueProject.jsx - FIXED VERSION
+// Fixed React error #130 by ensuring all rendered values are strings/primitives
 
 import React, { useState, useRef } from 'react';
 import { Upload, CheckCircle, Clock, Building2, AlertTriangle, Plus, FileText, Loader } from 'lucide-react';
@@ -12,7 +12,7 @@ const ContinueProject = ({ onWBSGenerated }) => {
   const [analysisResult, setAnalysisResult] = useState(null);
   const [projectResults, setProjectResults] = useState(null);
   
-  // NEW: Equipment integration state
+  // Equipment integration state
   const [equipmentFile, setEquipmentFile] = useState(null);
   const [equipmentData, setEquipmentData] = useState(null);
   const [isProcessingEquipment, setIsProcessingEquipment] = useState(false);
@@ -24,7 +24,7 @@ const ContinueProject = ({ onWBSGenerated }) => {
   const [error, setError] = useState(null);
 
   const fileInputRef = useRef(null);
-  const equipmentFileInputRef = useRef(null); // NEW
+  const equipmentFileInputRef = useRef(null);
 
   const colors = {
     darkBlue: '#1e3a8a',
@@ -33,7 +33,7 @@ const ContinueProject = ({ onWBSGenerated }) => {
     orange: '#f97316'
   };
 
-  // EXISTING: Your XER file handling (unchanged)
+  // XER file handling
   const handleFileUpload = async (event) => {
     const file = event.target.files[0];
     if (!file) return;
@@ -46,9 +46,9 @@ const ContinueProject = ({ onWBSGenerated }) => {
       const analysis = await getAvailableProjects(file);
       
       setAnalysisResult(analysis);
-      setAvailableProjects(analysis.availableProjects);
+      setAvailableProjects(analysis.availableProjects || []);
       
-      if (analysis.availableProjects.length > 0) {
+      if (analysis.availableProjects && analysis.availableProjects.length > 0) {
         setStep('selecting');
         console.log(`Found ${analysis.availableProjects.length} projects - manual selection required`);
       } else {
@@ -57,13 +57,13 @@ const ContinueProject = ({ onWBSGenerated }) => {
 
     } catch (error) {
       console.error('XER Analysis failed:', error);
-      setError('Failed to analyze XER file: ' + error.message);
+      setError('Failed to analyze XER file: ' + (error?.message || 'Unknown error'));
     } finally {
       setIsAnalyzing(false);
     }
   };
 
-  // EXISTING: Your project processing (unchanged)
+  // Project processing
   const processProject = async (projectId, analysis = null) => {
     setIsProcessing(true);
     setError(null);
@@ -78,13 +78,13 @@ const ContinueProject = ({ onWBSGenerated }) => {
       
       const results = await processSelectedProject(analysisToUse, projectId);
       setProjectResults(results);
-      setStep('equipment'); // CHANGED: Go to equipment step instead of complete
+      setStep('equipment');
       
-      console.log('Project processing complete:', results.totalElements, 'elements processed');
+      console.log('Project processing complete:', results?.totalElements || 0, 'elements processed');
 
     } catch (error) {
       console.error('Project processing failed:', error);
-      setError('Failed to process selected project: ' + error.message);
+      setError('Failed to process selected project: ' + (error?.message || 'Unknown error'));
     } finally {
       setIsProcessing(false);
     }
@@ -95,7 +95,7 @@ const ContinueProject = ({ onWBSGenerated }) => {
     processProject(project.proj_id);
   };
 
-  // NEW: Equipment file processing
+  // Equipment file processing
   const handleEquipmentFileUpload = async (event) => {
     const file = event.target.files[0];
     if (!file) return;
@@ -111,12 +111,12 @@ const ContinueProject = ({ onWBSGenerated }) => {
       const processedData = await processEquipmentFile(file);
       
       console.log('📊 Equipment processing complete:', {
-        total: processedData.length,
-        commissioned: processedData.filter(item => item.commissioning === 'Y').length,
-        tbc: processedData.filter(item => item.commissioning === 'TBC').length
+        total: processedData?.length || 0,
+        commissioned: processedData?.filter(item => item?.commissioning === 'Y')?.length || 0,
+        tbc: processedData?.filter(item => item?.commissioning === 'TBC')?.length || 0
       });
       
-      if (processedData.length === 0) {
+      if (!processedData || processedData.length === 0) {
         throw new Error('No valid equipment found in file');
       }
       
@@ -125,13 +125,13 @@ const ContinueProject = ({ onWBSGenerated }) => {
       
     } catch (error) {
       console.error('❌ Equipment processing error:', error);
-      setError(`Equipment Processing Error: ${error.message}`);
+      setError(`Equipment Processing Error: ${error?.message || 'Unknown error'}`);
     } finally {
       setIsProcessingEquipment(false);
     }
   };
 
-  // NEW: Execute the actual integration
+  // Execute the actual integration
   const executeIntegration = async () => {
     if (!projectResults || !equipmentData) {
       setError('Both project analysis and equipment data are required');
@@ -144,30 +144,31 @@ const ContinueProject = ({ onWBSGenerated }) => {
     try {
       console.log('🚀 Starting integration process');
       
-      // Extract subsystem name from equipment data
-      const subsystemName = equipmentData.find(item => item.subsystem)?.subsystem || 'New Subsystem';
+      // Extract subsystem name from equipment data (safely)
+      const firstItem = equipmentData.find(item => item?.subsystem);
+      const subsystemName = firstItem?.subsystem || 'New Subsystem';
       
       // Import the enhanced continue project integration
       const { processContinueProjectWBS } = await import('../utils/continueProjectIntegration.js');
       
-      // Execute integration using your zone code extraction
+      // Execute integration
       const result = processContinueProjectWBS(
-        projectResults.wbsElements || [],
+        projectResults?.wbsElements || [],
         equipmentData,
-        projectResults.projectInfo.projectName,
+        projectResults?.projectInfo?.projectName || 'Unknown Project',
         subsystemName
       );
       
       console.log('✅ Integration successful:', result);
       setIntegrationResult(result);
       
-      // ENHANCED: Create proper WBS structure for rendering
+      // Create proper WBS structure for rendering
       const wbsStructure = {
-        allNodes: [...(projectResults.wbsElements || []), ...result.newElements],
-        newNodes: result.newElements,
-        projectName: projectResults.projectInfo.projectName,
+        allNodes: [...(projectResults?.wbsElements || []), ...(result?.newElements || [])],
+        newNodes: result?.newElements || [],
+        projectName: projectResults?.projectInfo?.projectName || 'Unknown Project',
         mode: 'continue',
-        integrationSummary: result.summary
+        integrationSummary: result?.summary || {}
       };
       
       // Trigger WBS generation in parent component
@@ -179,7 +180,7 @@ const ContinueProject = ({ onWBSGenerated }) => {
       
     } catch (error) {
       console.error('❌ Integration error:', error);
-      setError(`Integration Error: ${error.message}`);
+      setError(`Integration Error: ${error?.message || 'Unknown error'}`);
     } finally {
       setIsIntegrating(false);
     }
@@ -203,7 +204,7 @@ const ContinueProject = ({ onWBSGenerated }) => {
     }
   };
 
-  // EXISTING: Your upload step (unchanged)
+  // Upload step
   const renderUploadStep = () => (
     <div className="bg-white rounded-xl shadow-lg p-8">
       <h2 className="text-2xl font-bold mb-6" style={{ color: colors.darkBlue }}>
@@ -265,7 +266,7 @@ const ContinueProject = ({ onWBSGenerated }) => {
             <AlertTriangle className="w-5 h-5 text-red-500 mr-2" />
             <div>
               <p className="font-medium text-red-800">Analysis Failed</p>
-              <p className="text-sm text-red-700">{error}</p>
+              <p className="text-sm text-red-700">{String(error)}</p>
             </div>
           </div>
         </div>
@@ -273,7 +274,7 @@ const ContinueProject = ({ onWBSGenerated }) => {
     </div>
   );
 
-  // EXISTING: Your project selection (unchanged)
+  // Project selection
   const renderProjectSelection = () => (
     <div className="bg-white rounded-xl shadow-lg p-8">
       <h2 className="text-2xl font-bold mb-6" style={{ color: colors.darkBlue }}>
@@ -283,43 +284,43 @@ const ContinueProject = ({ onWBSGenerated }) => {
       <div className="mb-6 p-4 bg-blue-50 rounded-lg">
         <h4 className="font-semibold text-blue-800 mb-2">📊 Available Projects</h4>
         <p className="text-sm text-blue-700">
-          Found {availableProjects.length} project{availableProjects.length === 1 ? '' : 's'} in your XER file. 
+          Found {availableProjects?.length || 0} project{availableProjects?.length === 1 ? '' : 's'} in your XER file. 
           Please review the project details and click to select the one you want to continue with:
         </p>
       </div>
 
       <div className="space-y-4">
-        {availableProjects.map((project) => (
+        {(availableProjects || []).map((project) => (
           <div
-            key={project.proj_id}
+            key={project?.proj_id || Math.random()}
             className="border-2 rounded-lg p-4 cursor-pointer transition-all duration-200 hover:shadow-lg hover:border-blue-300"
             style={{ 
-              borderColor: selectedProject?.proj_id === project.proj_id ? colors.darkGreen : '#e5e7eb'
+              borderColor: selectedProject?.proj_id === project?.proj_id ? colors.darkGreen : '#e5e7eb'
             }}
             onClick={() => handleProjectSelect(project)}
           >
             <div className="flex items-center justify-between">
               <div className="flex-1">
                 <h3 className="text-lg font-semibold" style={{ color: colors.darkBlue }}>
-                  {project.project_name}
+                  {String(project?.project_name || 'Unknown Project')}
                 </h3>
                 <div className="grid grid-cols-2 gap-4 mt-2 text-sm text-gray-600">
                   <div>
-                    <span className="font-medium">Project ID:</span> {project.proj_id}
+                    <span className="font-medium">Project ID:</span> {String(project?.proj_id || 'N/A')}
                   </div>
                   <div>
-                    <span className="font-medium">Project Code:</span> {project.project_code}
+                    <span className="font-medium">Project Code:</span> {String(project?.project_code || 'N/A')}
                   </div>
                   <div>
-                    <span className="font-medium">WBS Elements:</span> {project.wbs_element_count}
+                    <span className="font-medium">WBS Elements:</span> {String(project?.wbs_element_count || 0)}
                   </div>
                   <div>
                     <span className="font-medium">Status:</span> Active
                   </div>
                 </div>
-                {project.plan_start_date && project.plan_end_date && (
+                {project?.plan_start_date && project?.plan_end_date && (
                   <div className="mt-2 text-sm text-gray-500">
-                    <span className="font-medium">Schedule:</span> {project.plan_start_date} - {project.plan_end_date}
+                    <span className="font-medium">Schedule:</span> {String(project.plan_start_date)} - {String(project.plan_end_date)}
                   </div>
                 )}
                 <div className="mt-2">
@@ -337,7 +338,7 @@ const ContinueProject = ({ onWBSGenerated }) => {
                 <CheckCircle 
                   className="w-6 h-6" 
                   style={{ 
-                    color: selectedProject?.proj_id === project.proj_id ? colors.darkGreen : '#d1d5db'
+                    color: selectedProject?.proj_id === project?.proj_id ? colors.darkGreen : '#d1d5db'
                   }} 
                 />
               </div>
@@ -375,7 +376,7 @@ const ContinueProject = ({ onWBSGenerated }) => {
             <AlertTriangle className="w-5 h-5 text-red-500 mr-2" />
             <div>
               <p className="font-medium text-red-800">Processing Failed</p>
-              <p className="text-sm text-red-700">{error}</p>
+              <p className="text-sm text-red-700">{String(error)}</p>
             </div>
           </div>
         </div>
@@ -383,9 +384,12 @@ const ContinueProject = ({ onWBSGenerated }) => {
     </div>
   );
 
-  // NEW: Equipment upload step
+  // Equipment upload step
   const renderEquipmentStep = () => {
-    const { projectInfo, parentStructures, totalElements } = projectResults;
+    // Safe access to nested properties
+    const projectInfo = projectResults?.projectInfo || {};
+    const parentStructures = projectResults?.parentStructures || {};
+    const totalElements = projectResults?.totalElements || 0;
     
     return (
       <div className="bg-white rounded-xl shadow-lg p-8">
@@ -396,10 +400,10 @@ const ContinueProject = ({ onWBSGenerated }) => {
         {/* Project Summary */}
         <div className="mb-6 p-4 bg-green-50 rounded-lg">
           <h3 className="font-semibold text-green-800 mb-2">
-            ✅ Project Loaded: {projectInfo.projectName}
+            ✅ Project Loaded: {String(projectInfo?.projectName || 'Unknown Project')}
           </h3>
           <p className="text-sm text-green-700">
-            {totalElements} WBS elements • {parentStructures.subsystems?.length || 0} existing subsystems
+            {String(totalElements)} WBS elements • {String(parentStructures?.subsystems?.length || 0)} existing subsystems
           </p>
         </div>
 
@@ -415,7 +419,7 @@ const ContinueProject = ({ onWBSGenerated }) => {
                 ✅ Equipment File Loaded
               </h3>
               <p className="text-gray-600 mb-4">
-                {equipmentData.length} equipment items ready for integration
+                {String(equipmentData?.length || 0)} equipment items ready for integration
               </p>
               <button
                 onClick={() => equipmentFileInputRef.current?.click()}
@@ -505,7 +509,7 @@ const ContinueProject = ({ onWBSGenerated }) => {
               <AlertTriangle className="w-5 h-5 text-red-500 mr-2" />
               <div>
                 <p className="font-medium text-red-800">Error</p>
-                <p className="text-sm text-red-700">{error}</p>
+                <p className="text-sm text-red-700">{String(error)}</p>
               </div>
             </div>
           </div>
@@ -514,43 +518,46 @@ const ContinueProject = ({ onWBSGenerated }) => {
     );
   };
 
-  // ENHANCED: Complete step showing integration results
-  const renderResults = () => (
-    <div className="bg-white rounded-xl shadow-lg p-8">
-      <h2 className="text-2xl font-bold mb-6" style={{ color: colors.darkBlue }}>
-        🎉 Integration Complete!
-      </h2>
+  // Complete step - FIXED to prevent object rendering
+  const renderResults = () => {
+    // Safe access to integration results
+    const summary = integrationResult?.summary || {};
+    
+    return (
+      <div className="bg-white rounded-xl shadow-lg p-8">
+        <h2 className="text-2xl font-bold mb-6" style={{ color: colors.darkBlue }}>
+          🎉 Integration Complete!
+        </h2>
 
-      <div className="mb-6 p-6 bg-green-50 rounded-lg">
-        <h3 className="text-xl font-semibold mb-4" style={{ color: colors.darkBlue }}>
-          Successfully Added New Subsystem
-        </h3>
-        {integrationResult && (
+        <div className="mb-6 p-6 bg-green-50 rounded-lg">
+          <h3 className="text-xl font-semibold mb-4" style={{ color: colors.darkBlue }}>
+            Successfully Added New Subsystem
+          </h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <p><strong>New WBS Elements:</strong> {integrationResult.summary.totalElements}</p>
-              <p><strong>Equipment Processed:</strong> {integrationResult.summary.equipment}</p>
-              <p><strong>Categories Created:</strong> {integrationResult.summary.categories}</p>
+              <p><strong>New WBS Elements:</strong> {String(summary?.totalElements || 0)}</p>
+              <p><strong>Equipment Processed:</strong> {String(summary?.equipment || 0)}</p>
+              <p><strong>Categories Created:</strong> {String(summary?.categories || 0)}</p>
             </div>
             <div>
-              <p><strong>Prerequisite Entries:</strong> {integrationResult.summary.prerequisiteEntries}</p>
-              <p><strong>Subsystems Added:</strong> {integrationResult.summary.subsystems}</p>
+              <p><strong>Prerequisite Entries:</strong> {String(summary?.prerequisiteEntries || 0)}</p>
+              <p><strong>Subsystems Added:</strong> {String(summary?.subsystems || 0)}</p>
               <p><strong>Integration Status:</strong> ✅ Success</p>
             </div>
           </div>
-        )}
-      </div>
+        </div>
 
-      <div className="flex gap-4">
-        <button
-          onClick={handleStartOver}
-          className="px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
-        >
-          Add Another Subsystem
-        </button>
+        <div className="flex gap-4">
+          <button
+            onClick={handleStartOver}
+            className="px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+          >
+            Add Another Subsystem
+          </button>
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <div className="max-w-4xl mx-auto p-6">
