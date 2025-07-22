@@ -1,5 +1,5 @@
-// src/components/modes/ContinueProject.jsx - FULLY FIXED VERSION
-// Fixed React error #130 and equipment data flow issues
+// src/components/modes/ContinueProject.jsx - FIXED VERSION
+// Fixed import issue and equipment commissioning filtering
 
 import React, { useState, useRef } from 'react';
 import { Upload, CheckCircle, Clock, Building2, AlertTriangle, Plus, FileText, Loader } from 'lucide-react';
@@ -42,7 +42,7 @@ const ContinueProject = ({ onWBSGenerated }) => {
     setError(null);
 
     try {
-      console.log('Analyzing XER file for available projects...');
+      console.log('🚀 Analyzing XER file for available projects...');
       const analysis = await getAvailableProjects(file);
       
       setAnalysisResult(analysis);
@@ -50,13 +50,13 @@ const ContinueProject = ({ onWBSGenerated }) => {
       
       if (analysis.availableProjects && analysis.availableProjects.length > 0) {
         setStep('selecting');
-        console.log(`Found ${analysis.availableProjects.length} projects - manual selection required`);
+        console.log(`📊 Found ${analysis.availableProjects.length} projects - manual selection required`);
       } else {
         setError('No projects found in XER file');
       }
 
     } catch (error) {
-      console.error('XER Analysis failed:', error);
+      console.error('🚫 XER Analysis failed:', error);
       setError('Failed to analyze XER file: ' + (error?.message || 'Unknown error'));
     } finally {
       setIsAnalyzing(false);
@@ -69,7 +69,7 @@ const ContinueProject = ({ onWBSGenerated }) => {
     setError(null);
 
     try {
-      console.log('Processing selected project with direct data:', projectId);
+      console.log(`🏗️ Processing selected project: ${projectId}`);
       const analysisToUse = analysis || analysisResult;
       
       if (!analysisToUse) {
@@ -80,10 +80,10 @@ const ContinueProject = ({ onWBSGenerated }) => {
       setProjectResults(results);
       setStep('equipment');
       
-      console.log('Project processing complete:', results?.totalElements || 0, 'elements processed');
+      console.log(`✅ Project processing complete: ${results?.totalElements || 0} elements processed`);
 
     } catch (error) {
-      console.error('Project processing failed:', error);
+      console.error('❌ Project processing failed:', error);
       setError('Failed to process selected project: ' + (error?.message || 'Unknown error'));
     } finally {
       setIsProcessing(false);
@@ -95,39 +95,70 @@ const ContinueProject = ({ onWBSGenerated }) => {
     processProject(project.proj_id);
   };
 
-  // Equipment file processing - FIXED
+  // FIXED: Equipment file processing with correct import and commissioning filtering
   const handleEquipmentFileUpload = async (event) => {
     const file = event.target.files[0];
     if (!file) return;
 
     setIsProcessingEquipment(true);
     setError(null);
-    setEquipmentData(null); // Clear previous data
+    setEquipmentData(null);
     
     try {
       console.log('📁 Processing equipment file:', file.name);
       
-      // Import equipment processor
-      const { processEquipmentFile } = await import('../utils/equipmentFileProcessor.js');
-      const processedData = await processEquipmentFile(file);
+      // FIXED: Use the correct import from equipmentUtils.js
+      const { processEquipmentFile } = await import('../utils/equipmentUtils.js');
+      const rawProcessedData = await processEquipmentFile(file);
       
-      console.log('📊 Equipment processing complete:', {
-        total: processedData?.length || 0,
-        commissioned: processedData?.filter(item => item?.commissioning === 'Y')?.length || 0,
-        tbc: processedData?.filter(item => item?.commissioning === 'TBC')?.length || 0
-      });
+      console.log(`📊 Raw equipment data: ${rawProcessedData?.length || 0} total items`);
       
-      if (!processedData || processedData.length === 0) {
-        throw new Error('No valid equipment found in file');
+      if (!rawProcessedData || rawProcessedData.length === 0) {
+        throw new Error('No equipment found in file');
       }
       
-      // FIXED: Ensure state is set properly
+      // FIXED: Explicit commissioning filtering (Y and TBC only, exclude N)
+      const filteredData = rawProcessedData.filter(item => {
+        const commissioning = String(item?.commissioning || '').trim().toUpperCase();
+        const isValid = commissioning === 'Y' || commissioning === 'TBC';
+        
+        if (!isValid) {
+          console.log(`⏭️ FILTERED OUT: ${item?.equipmentNumber || 'Unknown'} (Commissioning: "${item?.commissioning || 'Missing'}")`);
+        }
+        
+        return isValid;
+      });
+      
+      console.log(`📊 Equipment filtering results:`);
+      console.log(`   Total items: ${rawProcessedData.length}`);
+      console.log(`   Commissioned (Y): ${rawProcessedData.filter(item => String(item?.commissioning || '').trim().toUpperCase() === 'Y').length}`);
+      console.log(`   TBC items: ${rawProcessedData.filter(item => String(item?.commissioning || '').trim().toUpperCase() === 'TBC').length}`);
+      console.log(`   Excluded (N): ${rawProcessedData.filter(item => String(item?.commissioning || '').trim().toUpperCase() === 'N').length}`);
+      console.log(`   Invalid/Missing: ${rawProcessedData.filter(item => {
+        const commissioning = String(item?.commissioning || '').trim().toUpperCase();
+        return commissioning !== 'Y' && commissioning !== 'TBC' && commissioning !== 'N';
+      }).length}`);
+      console.log(`   ✅ FINAL VALID: ${filteredData.length}`);
+      
+      if (filteredData.length === 0) {
+        throw new Error('No valid equipment found after filtering (only items with Commissioning = Y or TBC are processed)');
+      }
+      
+      // Validate required fields
+      const invalidItems = filteredData.filter(item => 
+        !item?.equipmentNumber || !item?.subsystem
+      );
+      
+      if (invalidItems.length > 0) {
+        console.warn(`⚠️ ${invalidItems.length} items missing required fields:`, invalidItems.slice(0, 3));
+      }
+      
       setEquipmentFile(file);
       
       // Wait for next tick to ensure state update
       setTimeout(() => {
-        setEquipmentData(processedData);
-        console.log('✅ Equipment data state updated:', processedData.length, 'items');
+        setEquipmentData(filteredData);
+        console.log(`✅ Equipment data state updated: ${filteredData.length} valid items ready for integration`);
       }, 0);
       
     } catch (error) {
@@ -139,9 +170,8 @@ const ContinueProject = ({ onWBSGenerated }) => {
     }
   };
 
-  // Execute the actual integration - FIXED
+  // Execute the actual integration
   const executeIntegration = async () => {
-    // FIXED: Better validation with detailed logging
     console.log('🔍 Integration pre-check:');
     console.log('   projectResults:', !!projectResults);
     console.log('   equipmentData:', !!equipmentData);
@@ -162,25 +192,24 @@ const ContinueProject = ({ onWBSGenerated }) => {
     
     try {
       console.log('🚀 Starting integration process');
-      console.log('📊 Equipment items to integrate:', equipmentData.length);
+      console.log(`📊 Equipment items to integrate: ${equipmentData.length}`);
       
       // Extract subsystem name from equipment data (safely)
       const firstItem = equipmentData.find(item => item?.subsystem);
       const subsystemName = firstItem?.subsystem || 'New Subsystem';
-      console.log('🏢 Detected subsystem:', subsystemName);
+      console.log(`🏢 Detected subsystem: "${subsystemName}"`);
       
       // Import the enhanced continue project integration
       const { processContinueProjectWBS } = await import('../utils/continueProjectIntegration.js');
       
-      // FIXED: Ensure all parameters are properly passed
       const existingWBSNodes = projectResults?.wbsElements || [];
       const projectName = projectResults?.projectInfo?.projectName || 'Unknown Project';
       
       console.log('🔧 Calling processContinueProjectWBS with:');
-      console.log('   existingWBSNodes:', existingWBSNodes.length);
-      console.log('   equipmentData:', equipmentData.length);
-      console.log('   projectName:', projectName);
-      console.log('   subsystemName:', subsystemName);
+      console.log(`   existingWBSNodes: ${existingWBSNodes.length}`);
+      console.log(`   equipmentData: ${equipmentData.length}`);
+      console.log(`   projectName: "${projectName}"`);
+      console.log(`   subsystemName: "${subsystemName}"`);
       
       // Execute integration
       const result = processContinueProjectWBS(
@@ -193,14 +222,13 @@ const ContinueProject = ({ onWBSGenerated }) => {
       console.log('✅ Integration successful:', result);
       setIntegrationResult(result);
       
-      // FIXED: Create proper WBS structure for rendering with all string values
+      // Create proper WBS structure for rendering
       const wbsStructure = {
         allNodes: [...(projectResults?.wbsElements || []), ...(result?.newElements || [])],
         newNodes: result?.newElements || [],
         projectName: String(projectResults?.projectInfo?.projectName || 'Unknown Project'),
         mode: 'continue',
         integrationSummary: {
-          // FIXED: Ensure all values are primitives for React rendering
           totalElements: Number(result?.summary?.totalElements || 0),
           equipment: Number(result?.summary?.equipment || 0),
           categories: Number(result?.summary?.categories || 0),
@@ -316,7 +344,7 @@ const ContinueProject = ({ onWBSGenerated }) => {
     </div>
   );
 
-  // Project selection - FIXED all object rendering
+  // Project selection
   const renderProjectSelection = () => (
     <div className="bg-white rounded-xl shadow-lg p-8">
       <h2 className="text-2xl font-bold mb-6" style={{ color: colors.darkBlue }}>
@@ -426,9 +454,8 @@ const ContinueProject = ({ onWBSGenerated }) => {
     </div>
   );
 
-  // Equipment upload step - FIXED all object rendering
+  // Equipment upload step with enhanced filtering info
   const renderEquipmentStep = () => {
-    // FIXED: Safe access to nested properties with string conversion
     const projectInfo = projectResults?.projectInfo || {};
     const parentStructures = projectResults?.parentStructures || {};
     const totalElements = Number(projectResults?.totalElements || 0);
@@ -441,7 +468,7 @@ const ContinueProject = ({ onWBSGenerated }) => {
           📦 Add New Equipment
         </h2>
 
-        {/* Project Summary - FIXED */}
+        {/* Project Summary */}
         <div className="mb-6 p-4 bg-green-50 rounded-lg">
           <h3 className="font-semibold text-green-800 mb-2">
             ✅ Project Loaded: {projectName}
@@ -451,7 +478,17 @@ const ContinueProject = ({ onWBSGenerated }) => {
           </p>
         </div>
 
-        {/* Equipment File Upload - FIXED */}
+        {/* ENHANCED: Commissioning Filter Warning */}
+        <div className="mb-6 p-4 bg-yellow-50 border-l-4 border-yellow-400 rounded">
+          <h4 className="font-semibold text-yellow-800 mb-2">📋 Equipment Filtering</h4>
+          <ul className="text-sm text-yellow-700 space-y-1">
+            <li>• <strong>Commissioning = "Y"</strong> → Will be included in WBS</li>
+            <li>• <strong>Commissioning = "TBC"</strong> → Will be included in TBC section</li>
+            <li>• <strong>Commissioning = "N"</strong> → Will be excluded completely</li>
+          </ul>
+        </div>
+
+        {/* Equipment File Upload */}
         <div className="border-2 border-dashed rounded-lg p-8 text-center mb-6" 
              style={{ borderColor: equipmentData ? colors.lightGreen : colors.darkGreen }}>
           <FileText className="w-12 h-12 mx-auto mb-4" 
@@ -462,8 +499,11 @@ const ContinueProject = ({ onWBSGenerated }) => {
               <h3 className="text-lg font-semibold mb-2 text-green-700">
                 ✅ Equipment File Loaded
               </h3>
-              <p className="text-gray-600 mb-4">
-                {String(equipmentData?.length || 0)} equipment items ready for integration
+              <p className="text-gray-600 mb-2">
+                <strong>{String(equipmentData?.length || 0)} valid equipment items</strong> ready for integration
+              </p>
+              <p className="text-sm text-gray-500 mb-4">
+                (After filtering: only Y and TBC items included)
               </p>
               <button
                 onClick={() => equipmentFileInputRef.current?.click()}
@@ -508,7 +548,7 @@ const ContinueProject = ({ onWBSGenerated }) => {
           />
         </div>
 
-        {/* Integration Button - FIXED with better state management */}
+        {/* Integration Button */}
         {equipmentData && Array.isArray(equipmentData) && equipmentData.length > 0 && (
           <div className="text-center mb-6">
             <button
@@ -562,9 +602,8 @@ const ContinueProject = ({ onWBSGenerated }) => {
     );
   };
 
-  // Complete step - FIXED to prevent all object rendering
+  // Complete step
   const renderResults = () => {
-    // FIXED: Safe access to integration results with proper type conversion
     const summary = integrationResult?.summary || {};
     
     return (
