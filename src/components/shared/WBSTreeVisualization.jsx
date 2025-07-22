@@ -1,5 +1,5 @@
-// src/components/shared/WBSTreeVisualization.jsx - FIXED to Use XER Hierarchy
-// Instead of rebuilding hierarchy, use parent_wbs_id relationships from XER parser
+// src/components/shared/WBSTreeVisualization.jsx - FIXED Hierarchy Building
+// Properly uses parent_wbs_id relationships to build correct tree structure
 
 import React, { useState, useMemo } from 'react';
 import { ChevronRight, ChevronDown, Eye, EyeOff, FileText, Building2, Settings, FolderOpen } from 'lucide-react';
@@ -27,37 +27,31 @@ const WBSTreeVisualization = ({ wbsNodes = [] }) => {
     return String(value);
   };
 
-  // FIXED: Use parent_wbs_id relationships instead of rebuilding hierarchy
+  // FIXED: Proper hierarchy building using parent_wbs_id relationships
   const buildHierarchyFromParentIds = (nodes) => {
-    console.log('🏗️ FIXED: Building hierarchy using parent_wbs_id relationships from', nodes.length, 'nodes');
+    console.log('🔧 FIXED: Building proper hierarchy from', nodes.length, 'nodes using parent_wbs_id');
     
     if (!Array.isArray(nodes) || nodes.length === 0) {
       return [];
     }
     
-    // FIXED: Better flag detection using explicit flags
+    // Normalize nodes with proper flag detection
     const normalizedNodes = nodes.map(node => {
       let isNew = false;
       let isExisting = false;
       
       if (node.isNew === true || node.is_new === true) {
         isNew = true;
-        isExisting = false;
       } else if (node.isExisting === true) {
         isExisting = true;
-        isNew = false;
       } else {
-        // Fallback: treat as existing (likely from XER)
+        // Default: existing (from XER)
         isExisting = true;
-        isNew = false;
       }
       
-      // FIXED: Use wbs_short_name for display (has decimal codes), wbs_id for relationships
-      const wbsCode = safeString(node.wbs_short_name || node.wbs_code || node.wbs_id || `temp_${Math.random()}`);
-      
-      const normalizedNode = {
+      return {
         id: safeString(node.wbs_id || node.id || `temp_${Math.random()}`),
-        wbsCode: wbsCode,
+        wbsCode: safeString(node.wbs_short_name || node.wbs_code || node.wbs_id || 'unknown'),
         wbsId: safeString(node.wbs_id || ''),
         parentWbsId: safeString(node.parent_wbs_id || ''),
         name: safeString(node.wbs_name || node.name || 'Unnamed'),
@@ -68,85 +62,99 @@ const WBSTreeVisualization = ({ wbsNodes = [] }) => {
         commissioning: safeString(node.commissioning || ''),
         originalNode: node
       };
-      
-      // Calculate level from decimal WBS code
-      if (wbsCode.includes('.')) {
-        normalizedNode.level = wbsCode.split('.').length - 1;
-      } else {
-        normalizedNode.level = 0; // Root level
-      }
-      
-      return normalizedNode;
     });
 
-    console.log('📊 FIXED: Flag Analysis:', {
+    console.log('📊 FIXED: Node analysis:', {
       total: normalizedNodes.length,
       new: normalizedNodes.filter(n => n.isNew).length,
       existing: normalizedNodes.filter(n => n.isExisting).length
     });
     
-    // FIXED: Build hierarchy using parent_wbs_id relationships (like XER parser did)
+    // FIXED: Build proper parent-child relationships
     const nodeMap = new Map();
-    const childrenByParentId = new Map();
+    const childrenMap = new Map();
     
-    // Create lookup maps
+    // Create lookup map by wbs_id
     normalizedNodes.forEach(node => {
       nodeMap.set(node.wbsId, node);
     });
     
-    // Build parent-child relationships using parent_wbs_id
+    // Build parent-child relationships - FIXED logic
     normalizedNodes.forEach(node => {
       const parentId = node.parentWbsId;
       
-      if (!parentId || parentId === '' || parentId === node.wbsId) {
+      // FIXED: Identify true root nodes (no parent or parent doesn't exist)
+      if (!parentId || parentId === '' || parentId === '0' || !nodeMap.has(parentId)) {
         // Root node
-        if (!childrenByParentId.has('ROOT')) {
-          childrenByParentId.set('ROOT', []);
+        if (!childrenMap.has('ROOT')) {
+          childrenMap.set('ROOT', []);
         }
-        childrenByParentId.get('ROOT').push(node);
+        childrenMap.get('ROOT').push(node);
       } else {
-        // Child node
-        if (!childrenByParentId.has(parentId)) {
-          childrenByParentId.set(parentId, []);
+        // Child node with valid parent
+        if (!childrenMap.has(parentId)) {
+          childrenMap.set(parentId, []);
         }
-        childrenByParentId.get(parentId).push(node);
+        childrenMap.get(parentId).push(node);
       }
     });
     
-    console.log(`📊 Parent-child groups: ${childrenByParentId.size}`);
-    console.log(`📊 Root nodes: ${(childrenByParentId.get('ROOT') || []).length}`);
+    // FIXED: Debug output
+    const rootNodes = childrenMap.get('ROOT') || [];
+    console.log(`📊 FIXED: Found ${rootNodes.length} actual root nodes`);
+    console.log(`📊 FIXED: Parent-child groups: ${childrenMap.size}`);
     
-    // Recursively build tree structure
-    const buildNodeTree = (nodeId) => {
+    // Root nodes should be project level (like "5737")
+    if (rootNodes.length > 5) {
+      console.warn(`⚠️ FIXED: Unusual number of root nodes (${rootNodes.length}), may indicate hierarchy issues`);
+      console.warn('🔍 FIXED: Sample root nodes:', rootNodes.slice(0, 5).map(n => `${n.wbsCode}: ${n.name}`));
+    }
+    
+    // FIXED: Recursive tree building
+    const buildTree = (nodeId) => {
       const node = nodeMap.get(nodeId);
       if (!node) {
+        console.warn(`⚠️ FIXED: Node not found: ${nodeId}`);
         return null;
       }
       
-      const children = childrenByParentId.get(nodeId) || [];
+      const children = childrenMap.get(nodeId) || [];
       
-      // Sort children by WBS code
+      // Sort children by WBS code (numeric then alphanumeric)
       const sortedChildren = children.sort((a, b) => {
-        return a.wbsCode.localeCompare(b.wbsCode, undefined, { 
+        const aCode = a.wbsCode;
+        const bCode = b.wbsCode;
+        
+        // Try numeric comparison first
+        const aNum = parseInt(aCode);
+        const bNum = parseInt(bCode);
+        
+        if (!isNaN(aNum) && !isNaN(bNum)) {
+          return aNum - bNum;
+        }
+        
+        // Fall back to string comparison
+        return aCode.localeCompare(bCode, undefined, { 
           numeric: true, 
           sensitivity: 'base' 
         });
       });
       
-      return {
+      const treeNode = {
         ...node,
-        children: sortedChildren.map(child => buildNodeTree(child.wbsId)).filter(Boolean),
+        children: sortedChildren.map(child => buildTree(child.wbsId)).filter(Boolean),
         hasChildren: sortedChildren.length > 0
       };
+      
+      return treeNode;
     };
     
-    // Start from root nodes
-    const rootNodes = childrenByParentId.get('ROOT') || [];
-    console.log(`🌲 FIXED: Building tree from ${rootNodes.length} actual root nodes`);
+    // Build tree from root nodes
+    const trees = rootNodes
+      .map(root => buildTree(root.wbsId))
+      .filter(Boolean);
     
-    const trees = rootNodes.map(root => buildNodeTree(root.wbsId)).filter(Boolean);
-    
-    console.log(`✅ FIXED: Hierarchy complete - ${trees.length} root trees built using parent_wbs_id`);
+    console.log(`✅ FIXED: Hierarchy complete - ${trees.length} root trees built`);
     
     return trees;
   };
@@ -212,9 +220,12 @@ const WBSTreeVisualization = ({ wbsNodes = [] }) => {
   // Enhanced node type detection
   const getNodeType = (node) => {
     const name = node.name.toLowerCase();
-    const level = node.level || 0;
+    const wbsCode = node.wbsCode;
     
-    if (level === 0) return 'project';
+    // Project root
+    if (name.includes('summerfield') || wbsCode === '1' || wbsCode.match(/^\d{4}$/)) {
+      return 'project';
+    }
     
     if (name.includes('pre-requisite') || name.includes('prerequisite')) return 'prerequisite';
     if (name.includes('milestone')) return 'milestone';
@@ -382,7 +393,7 @@ const WBSTreeVisualization = ({ wbsNodes = [] }) => {
             </div>
             
             <div className="text-xs text-gray-500 mt-1">
-              Level {node.level} • Type: {nodeType} • Children: {node.hasChildren ? (node.children?.length || 0) : 0} • {node.isNew ? 'NEW' : 'EXISTING'}
+              Level {level} • Type: {nodeType} • Children: {node.hasChildren ? (node.children?.length || 0) : 0} • {node.isNew ? 'NEW' : 'EXISTING'}
             </div>
           </div>
         </div>
@@ -444,7 +455,7 @@ const WBSTreeVisualization = ({ wbsNodes = [] }) => {
     <div className="bg-white rounded-xl shadow-lg p-6">
       <div className="flex items-center justify-between mb-6">
         <h3 className="text-xl font-bold" style={{ color: colors.darkBlue }}>
-          🏗️ FIXED WBS Hierarchy ({stats.total} nodes)
+          🔧 FIXED WBS Hierarchy ({stats.total} nodes)
         </h3>
         
         <div className="flex items-center gap-4">
@@ -536,7 +547,7 @@ const WBSTreeVisualization = ({ wbsNodes = [] }) => {
       </div>
 
       <div className="mt-4 text-sm text-gray-600">
-        <strong>FIXED:</strong> Using parent_wbs_id hierarchy from XER parser • Shows proper nested structure • TBC & Category 99 should now show children
+        <strong>🔧 FIXED:</strong> Proper parent_wbs_id hierarchy building • Shows correct nested structure • Project 5737 pattern detection
       </div>
     </div>
   );
