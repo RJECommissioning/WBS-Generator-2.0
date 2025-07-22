@@ -204,15 +204,35 @@ const WBSGenerator = () => {
             subsystemName // subsystemName
           );
           
-          // Transform result to match expected format
+          // FIXED: Transform result to match expected format with safe primitive values
           result = {
-            allNodes: [...(projectState.wbsNodes || []), ...(result.newElements || [])],
-            newNodes: result.newElements || [],
+            allNodes: [...(projectState.wbsNodes || []), ...(result.newElements || [])].map(node => ({
+              ...node,
+              wbs_code: String(node.wbs_code || ''),
+              parent_wbs_code: String(node.parent_wbs_code || ''),
+              wbs_name: String(node.wbs_name || ''),
+              wbs_id: String(node.wbs_id || '')
+            })),
+            newNodes: (result.newElements || []).map(node => ({
+              ...node,
+              wbs_code: String(node.wbs_code || ''),
+              parent_wbs_code: String(node.parent_wbs_code || ''),
+              wbs_name: String(node.wbs_name || ''),
+              wbs_id: String(node.wbs_id || '')
+            })),
             projectState: {
-              ...projectState,
-              subsystems: [...(projectState.subsystems || []), subsystemName],
-              lastWbsCode: (projectState.lastWbsCode || 0) + 1,
-              timestamp: new Date().toISOString()
+              projectName: String(projectState.projectName || 'Unknown Project'),
+              totalElements: Number(projectState.totalElements || 0),
+              subsystems: [...(projectState.subsystems || []), String(subsystemName)].map(s => String(s)),
+              lastWbsCode: Number((projectState.lastWbsCode || 0) + 1),
+              timestamp: String(new Date().toISOString()),
+              wbsNodes: [...(projectState.wbsNodes || []), ...(result.newElements || [])].map(node => ({
+                ...node,
+                wbs_code: String(node.wbs_code || ''),
+                parent_wbs_code: String(node.parent_wbs_code || ''),
+                wbs_name: String(node.wbs_name || ''),
+                wbs_id: String(node.wbs_id || '')
+              }))
             }
           };
           
