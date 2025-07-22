@@ -1,5 +1,5 @@
-// src/components/modes/ContinueProject.jsx - FIXED VERSION
-// Fixed React error #130 by ensuring all rendered values are strings/primitives
+// src/components/modes/ContinueProject.jsx - FULLY FIXED VERSION
+// Fixed React error #130 and equipment data flow issues
 
 import React, { useState, useRef } from 'react';
 import { Upload, CheckCircle, Clock, Building2, AlertTriangle, Plus, FileText, Loader } from 'lucide-react';
@@ -95,13 +95,14 @@ const ContinueProject = ({ onWBSGenerated }) => {
     processProject(project.proj_id);
   };
 
-  // Equipment file processing
+  // Equipment file processing - FIXED
   const handleEquipmentFileUpload = async (event) => {
     const file = event.target.files[0];
     if (!file) return;
 
     setIsProcessingEquipment(true);
     setError(null);
+    setEquipmentData(null); // Clear previous data
     
     try {
       console.log('📁 Processing equipment file:', file.name);
@@ -120,21 +121,39 @@ const ContinueProject = ({ onWBSGenerated }) => {
         throw new Error('No valid equipment found in file');
       }
       
+      // FIXED: Ensure state is set properly
       setEquipmentFile(file);
-      setEquipmentData(processedData);
+      
+      // Wait for next tick to ensure state update
+      setTimeout(() => {
+        setEquipmentData(processedData);
+        console.log('✅ Equipment data state updated:', processedData.length, 'items');
+      }, 0);
       
     } catch (error) {
       console.error('❌ Equipment processing error:', error);
       setError(`Equipment Processing Error: ${error?.message || 'Unknown error'}`);
+      setEquipmentData(null);
     } finally {
       setIsProcessingEquipment(false);
     }
   };
 
-  // Execute the actual integration
+  // Execute the actual integration - FIXED
   const executeIntegration = async () => {
-    if (!projectResults || !equipmentData) {
-      setError('Both project analysis and equipment data are required');
+    // FIXED: Better validation with detailed logging
+    console.log('🔍 Integration pre-check:');
+    console.log('   projectResults:', !!projectResults);
+    console.log('   equipmentData:', !!equipmentData);
+    console.log('   equipmentData length:', equipmentData?.length || 0);
+    
+    if (!projectResults) {
+      setError('Project analysis is required - please reload the project');
+      return;
+    }
+    
+    if (!equipmentData || !Array.isArray(equipmentData) || equipmentData.length === 0) {
+      setError('Equipment data is missing or invalid - please reload the equipment file');
       return;
     }
 
@@ -143,32 +162,55 @@ const ContinueProject = ({ onWBSGenerated }) => {
     
     try {
       console.log('🚀 Starting integration process');
+      console.log('📊 Equipment items to integrate:', equipmentData.length);
       
       // Extract subsystem name from equipment data (safely)
       const firstItem = equipmentData.find(item => item?.subsystem);
       const subsystemName = firstItem?.subsystem || 'New Subsystem';
+      console.log('🏢 Detected subsystem:', subsystemName);
       
       // Import the enhanced continue project integration
       const { processContinueProjectWBS } = await import('../utils/continueProjectIntegration.js');
       
+      // FIXED: Ensure all parameters are properly passed
+      const existingWBSNodes = projectResults?.wbsElements || [];
+      const projectName = projectResults?.projectInfo?.projectName || 'Unknown Project';
+      
+      console.log('🔧 Calling processContinueProjectWBS with:');
+      console.log('   existingWBSNodes:', existingWBSNodes.length);
+      console.log('   equipmentData:', equipmentData.length);
+      console.log('   projectName:', projectName);
+      console.log('   subsystemName:', subsystemName);
+      
       // Execute integration
       const result = processContinueProjectWBS(
-        projectResults?.wbsElements || [],
+        existingWBSNodes,
         equipmentData,
-        projectResults?.projectInfo?.projectName || 'Unknown Project',
+        projectName,
         subsystemName
       );
       
       console.log('✅ Integration successful:', result);
       setIntegrationResult(result);
       
-      // Create proper WBS structure for rendering
+      // FIXED: Create proper WBS structure for rendering with all string values
       const wbsStructure = {
         allNodes: [...(projectResults?.wbsElements || []), ...(result?.newElements || [])],
         newNodes: result?.newElements || [],
-        projectName: projectResults?.projectInfo?.projectName || 'Unknown Project',
+        projectName: String(projectResults?.projectInfo?.projectName || 'Unknown Project'),
         mode: 'continue',
-        integrationSummary: result?.summary || {}
+        integrationSummary: {
+          // FIXED: Ensure all values are primitives for React rendering
+          totalElements: Number(result?.summary?.totalElements || 0),
+          equipment: Number(result?.summary?.equipment || 0),
+          categories: Number(result?.summary?.categories || 0),
+          prerequisiteEntries: Number(result?.summary?.prerequisiteEntries || 0),
+          subsystems: Number(result?.summary?.subsystems || 0),
+          subsystemNumber: Number(result?.summary?.subsystemNumber || 0),
+          zoneCode: String(result?.summary?.zoneCode || ''),
+          existingElements: Number(result?.summary?.existingElements || 0),
+          newElements: Number(result?.summary?.newElements || 0)
+        }
       };
       
       // Trigger WBS generation in parent component
@@ -274,7 +316,7 @@ const ContinueProject = ({ onWBSGenerated }) => {
     </div>
   );
 
-  // Project selection
+  // Project selection - FIXED all object rendering
   const renderProjectSelection = () => (
     <div className="bg-white rounded-xl shadow-lg p-8">
       <h2 className="text-2xl font-bold mb-6" style={{ color: colors.darkBlue }}>
@@ -284,7 +326,7 @@ const ContinueProject = ({ onWBSGenerated }) => {
       <div className="mb-6 p-4 bg-blue-50 rounded-lg">
         <h4 className="font-semibold text-blue-800 mb-2">📊 Available Projects</h4>
         <p className="text-sm text-blue-700">
-          Found {availableProjects?.length || 0} project{availableProjects?.length === 1 ? '' : 's'} in your XER file. 
+          Found {String(availableProjects?.length || 0)} project{availableProjects?.length === 1 ? '' : 's'} in your XER file. 
           Please review the project details and click to select the one you want to continue with:
         </p>
       </div>
@@ -292,7 +334,7 @@ const ContinueProject = ({ onWBSGenerated }) => {
       <div className="space-y-4">
         {(availableProjects || []).map((project) => (
           <div
-            key={project?.proj_id || Math.random()}
+            key={String(project?.proj_id || Math.random())}
             className="border-2 rounded-lg p-4 cursor-pointer transition-all duration-200 hover:shadow-lg hover:border-blue-300"
             style={{ 
               borderColor: selectedProject?.proj_id === project?.proj_id ? colors.darkGreen : '#e5e7eb'
@@ -384,12 +426,14 @@ const ContinueProject = ({ onWBSGenerated }) => {
     </div>
   );
 
-  // Equipment upload step
+  // Equipment upload step - FIXED all object rendering
   const renderEquipmentStep = () => {
-    // Safe access to nested properties
+    // FIXED: Safe access to nested properties with string conversion
     const projectInfo = projectResults?.projectInfo || {};
     const parentStructures = projectResults?.parentStructures || {};
-    const totalElements = projectResults?.totalElements || 0;
+    const totalElements = Number(projectResults?.totalElements || 0);
+    const subsystemCount = Number(parentStructures?.subsystems?.length || 0);
+    const projectName = String(projectInfo?.projectName || 'Unknown Project');
     
     return (
       <div className="bg-white rounded-xl shadow-lg p-8">
@@ -397,17 +441,17 @@ const ContinueProject = ({ onWBSGenerated }) => {
           📦 Add New Equipment
         </h2>
 
-        {/* Project Summary */}
+        {/* Project Summary - FIXED */}
         <div className="mb-6 p-4 bg-green-50 rounded-lg">
           <h3 className="font-semibold text-green-800 mb-2">
-            ✅ Project Loaded: {String(projectInfo?.projectName || 'Unknown Project')}
+            ✅ Project Loaded: {projectName}
           </h3>
           <p className="text-sm text-green-700">
-            {String(totalElements)} WBS elements • {String(parentStructures?.subsystems?.length || 0)} existing subsystems
+            {String(totalElements)} WBS elements • {String(subsystemCount)} existing subsystems
           </p>
         </div>
 
-        {/* Equipment File Upload */}
+        {/* Equipment File Upload - FIXED */}
         <div className="border-2 border-dashed rounded-lg p-8 text-center mb-6" 
              style={{ borderColor: equipmentData ? colors.lightGreen : colors.darkGreen }}>
           <FileText className="w-12 h-12 mx-auto mb-4" 
@@ -464,12 +508,12 @@ const ContinueProject = ({ onWBSGenerated }) => {
           />
         </div>
 
-        {/* Integration Button */}
-        {equipmentData && (
+        {/* Integration Button - FIXED with better state management */}
+        {equipmentData && Array.isArray(equipmentData) && equipmentData.length > 0 && (
           <div className="text-center mb-6">
             <button
               onClick={executeIntegration}
-              disabled={isIntegrating}
+              disabled={isIntegrating || !equipmentData}
               className="px-8 py-3 text-white rounded-lg font-medium text-lg disabled:opacity-50"
               style={{ backgroundColor: colors.orange }}
             >
@@ -481,7 +525,7 @@ const ContinueProject = ({ onWBSGenerated }) => {
               ) : (
                 <>
                   <Plus className="w-5 h-5 inline mr-2" />
-                  Integrate Equipment into WBS
+                  Integrate {String(equipmentData.length)} Equipment Items
                 </>
               )}
             </button>
@@ -518,9 +562,9 @@ const ContinueProject = ({ onWBSGenerated }) => {
     );
   };
 
-  // Complete step - FIXED to prevent object rendering
+  // Complete step - FIXED to prevent all object rendering
   const renderResults = () => {
-    // Safe access to integration results
+    // FIXED: Safe access to integration results with proper type conversion
     const summary = integrationResult?.summary || {};
     
     return (
@@ -545,6 +589,15 @@ const ContinueProject = ({ onWBSGenerated }) => {
               <p><strong>Integration Status:</strong> ✅ Success</p>
             </div>
           </div>
+          
+          {summary?.zoneCode && (
+            <div className="mt-4 p-3 bg-blue-50 rounded-lg">
+              <p className="text-sm">
+                <strong>Zone Code:</strong> {String(summary.zoneCode)} | 
+                <strong> Subsystem:</strong> S{String(summary?.subsystemNumber || 0)}
+              </p>
+            </div>
+          )}
         </div>
 
         <div className="flex gap-4">
