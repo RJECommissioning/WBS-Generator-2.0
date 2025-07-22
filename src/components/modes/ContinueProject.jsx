@@ -1,8 +1,8 @@
-// src/components/modes/ContinueProject.jsx - FIXED VERSION
-// Fixed import issue and equipment commissioning filtering
+// src/components/modes/ContinueProject.jsx - ENHANCED UI VERSION
+// Added proper visualization stages for XER and equipment integration
 
 import React, { useState, useRef } from 'react';
-import { Upload, CheckCircle, Clock, Building2, AlertTriangle, Plus, FileText, Loader } from 'lucide-react';
+import { Upload, CheckCircle, Clock, Building2, AlertTriangle, Plus, FileText, Loader, Eye, EyeOff, ChevronRight, ChevronDown } from 'lucide-react';
 import { getAvailableProjects, processSelectedProject } from '../utils/xerParser';
 
 const ContinueProject = ({ onWBSGenerated }) => {
@@ -63,7 +63,7 @@ const ContinueProject = ({ onWBSGenerated }) => {
     }
   };
 
-  // Project processing
+  // Project processing with XER visualization
   const processProject = async (projectId, analysis = null) => {
     setIsProcessing(true);
     setError(null);
@@ -78,7 +78,9 @@ const ContinueProject = ({ onWBSGenerated }) => {
       
       const results = await processSelectedProject(analysisToUse, projectId);
       setProjectResults(results);
-      setStep('equipment');
+      
+      // NEW: Go to XER review step instead of directly to equipment
+      setStep('xerReview');
       
       console.log(`✅ Project processing complete: ${results?.totalElements || 0} elements processed`);
 
@@ -95,7 +97,7 @@ const ContinueProject = ({ onWBSGenerated }) => {
     processProject(project.proj_id);
   };
 
-  // FIXED: Equipment file processing with correct import and commissioning filtering
+  // Equipment file processing
   const handleEquipmentFileUpload = async (event) => {
     const file = event.target.files[0];
     if (!file) return;
@@ -107,7 +109,6 @@ const ContinueProject = ({ onWBSGenerated }) => {
     try {
       console.log('📁 Processing equipment file:', file.name);
       
-      // FIXED: Use the correct import from equipmentUtils.js
       const { processEquipmentFile } = await import('../utils/equipmentUtils.js');
       const rawProcessedData = await processEquipmentFile(file);
       
@@ -117,7 +118,7 @@ const ContinueProject = ({ onWBSGenerated }) => {
         throw new Error('No equipment found in file');
       }
       
-      // FIXED: Explicit commissioning filtering (Y and TBC only, exclude N)
+      // Filter for commissioned equipment only
       const filteredData = rawProcessedData.filter(item => {
         const commissioning = String(item?.commissioning || '').trim().toUpperCase();
         const isValid = commissioning === 'Y' || commissioning === 'TBC';
@@ -131,31 +132,14 @@ const ContinueProject = ({ onWBSGenerated }) => {
       
       console.log(`📊 Equipment filtering results:`);
       console.log(`   Total items: ${rawProcessedData.length}`);
-      console.log(`   Commissioned (Y): ${rawProcessedData.filter(item => String(item?.commissioning || '').trim().toUpperCase() === 'Y').length}`);
-      console.log(`   TBC items: ${rawProcessedData.filter(item => String(item?.commissioning || '').trim().toUpperCase() === 'TBC').length}`);
-      console.log(`   Excluded (N): ${rawProcessedData.filter(item => String(item?.commissioning || '').trim().toUpperCase() === 'N').length}`);
-      console.log(`   Invalid/Missing: ${rawProcessedData.filter(item => {
-        const commissioning = String(item?.commissioning || '').trim().toUpperCase();
-        return commissioning !== 'Y' && commissioning !== 'TBC' && commissioning !== 'N';
-      }).length}`);
       console.log(`   ✅ FINAL VALID: ${filteredData.length}`);
       
       if (filteredData.length === 0) {
         throw new Error('No valid equipment found after filtering (only items with Commissioning = Y or TBC are processed)');
       }
       
-      // Validate required fields
-      const invalidItems = filteredData.filter(item => 
-        !item?.equipmentNumber || !item?.subsystem
-      );
-      
-      if (invalidItems.length > 0) {
-        console.warn(`⚠️ ${invalidItems.length} items missing required fields:`, invalidItems.slice(0, 3));
-      }
-      
       setEquipmentFile(file);
       
-      // Wait for next tick to ensure state update
       setTimeout(() => {
         setEquipmentData(filteredData);
         console.log(`✅ Equipment data state updated: ${filteredData.length} valid items ready for integration`);
@@ -170,20 +154,10 @@ const ContinueProject = ({ onWBSGenerated }) => {
     }
   };
 
-  // Execute the actual integration
+  // Execute integration and show combined view
   const executeIntegration = async () => {
-    console.log('🔍 Integration pre-check:');
-    console.log('   projectResults:', !!projectResults);
-    console.log('   equipmentData:', !!equipmentData);
-    console.log('   equipmentData length:', equipmentData?.length || 0);
-    
-    if (!projectResults) {
-      setError('Project analysis is required - please reload the project');
-      return;
-    }
-    
-    if (!equipmentData || !Array.isArray(equipmentData) || equipmentData.length === 0) {
-      setError('Equipment data is missing or invalid - please reload the equipment file');
+    if (!projectResults || !equipmentData || equipmentData.length === 0) {
+      setError('Missing project or equipment data');
       return;
     }
 
@@ -192,26 +166,15 @@ const ContinueProject = ({ onWBSGenerated }) => {
     
     try {
       console.log('🚀 Starting integration process');
-      console.log(`📊 Equipment items to integrate: ${equipmentData.length}`);
       
-      // Extract subsystem name from equipment data (safely)
       const firstItem = equipmentData.find(item => item?.subsystem);
       const subsystemName = firstItem?.subsystem || 'New Subsystem';
-      console.log(`🏢 Detected subsystem: "${subsystemName}"`);
       
-      // Import the enhanced continue project integration
       const { processContinueProjectWBS } = await import('../utils/continueProjectIntegration.js');
       
       const existingWBSNodes = projectResults?.wbsElements || [];
       const projectName = projectResults?.projectInfo?.projectName || 'Unknown Project';
       
-      console.log('🔧 Calling processContinueProjectWBS with:');
-      console.log(`   existingWBSNodes: ${existingWBSNodes.length}`);
-      console.log(`   equipmentData: ${equipmentData.length}`);
-      console.log(`   projectName: "${projectName}"`);
-      console.log(`   subsystemName: "${subsystemName}"`);
-      
-      // Execute integration
       const result = processContinueProjectWBS(
         existingWBSNodes,
         equipmentData,
@@ -222,8 +185,8 @@ const ContinueProject = ({ onWBSGenerated }) => {
       console.log('✅ Integration successful:', result);
       setIntegrationResult(result);
       
-      // Create proper WBS structure for rendering
-      const wbsStructure = {
+      // Create combined WBS structure for visualization
+      const combinedWBSStructure = {
         allNodes: [...(projectResults?.wbsElements || []), ...(result?.newElements || [])],
         newNodes: result?.newElements || [],
         projectName: String(projectResults?.projectInfo?.projectName || 'Unknown Project'),
@@ -241,12 +204,12 @@ const ContinueProject = ({ onWBSGenerated }) => {
         }
       };
       
-      // Trigger WBS generation in parent component
+      // Trigger parent component to show results
       if (onWBSGenerated) {
-        onWBSGenerated(wbsStructure);
+        onWBSGenerated(combinedWBSStructure);
       }
       
-      setStep('complete');
+      setStep('integrated');
       
     } catch (error) {
       console.error('❌ Integration error:', error);
@@ -274,6 +237,139 @@ const ContinueProject = ({ onWBSGenerated }) => {
     }
   };
 
+  // NEW: XER Structure Visualization Component
+  const XERStructureViewer = ({ wbsElements, projectInfo }) => {
+    const [expandedNodes, setExpandedNodes] = useState(new Set(['root']));
+    
+    const toggleExpanded = (nodeId) => {
+      const newExpanded = new Set(expandedNodes);
+      if (newExpanded.has(nodeId)) {
+        newExpanded.delete(nodeId);
+      } else {
+        newExpanded.add(nodeId);
+      }
+      setExpandedNodes(newExpanded);
+    };
+
+    const expandAll = () => {
+      const allIds = new Set(wbsElements.map(el => el.wbs_id));
+      allIds.add('root');
+      setExpandedNodes(allIds);
+    };
+
+    const collapseAll = () => {
+      setExpandedNodes(new Set(['root']));
+    };
+
+    // Build hierarchy
+    const hierarchy = React.useMemo(() => {
+      const nodeMap = new Map();
+      const children = new Map();
+
+      wbsElements.forEach(element => {
+        nodeMap.set(element.wbs_id, element);
+        const parentId = element.parent_wbs_id || 'root';
+        if (!children.has(parentId)) {
+          children.set(parentId, []);
+        }
+        children.get(parentId).push(element);
+      });
+
+      const buildTree = (parentId) => {
+        const nodeChildren = children.get(parentId) || [];
+        return nodeChildren
+          .sort((a, b) => (a.wbs_short_name || '').localeCompare(b.wbs_short_name || '', undefined, { numeric: true }))
+          .map(child => ({
+            ...child,
+            children: buildTree(child.wbs_id)
+          }));
+      };
+
+      return buildTree('root');
+    }, [wbsElements]);
+
+    const renderNode = (node, level = 0) => {
+      const hasChildren = node.children && node.children.length > 0;
+      const isExpanded = expandedNodes.has(node.wbs_id);
+
+      return (
+        <div key={node.wbs_id} className="mb-1">
+          <div
+            className="flex items-center p-2 rounded border bg-blue-50 border-blue-200 cursor-pointer hover:bg-blue-100 transition-colors"
+            style={{ marginLeft: `${level * 20}px` }}
+            onClick={() => hasChildren && toggleExpanded(node.wbs_id)}
+          >
+            {hasChildren ? (
+              isExpanded ? 
+              <ChevronDown className="w-4 h-4 mr-2 text-blue-600" /> :
+              <ChevronRight className="w-4 h-4 mr-2 text-blue-600" />
+            ) : (
+              <div className="w-4 h-4 mr-2" />
+            )}
+            
+            <div className="flex-1">
+              <div className="flex items-center gap-2">
+                <span className="font-mono text-sm font-medium text-blue-800">
+                  {node.wbs_short_name || node.wbs_id}
+                </span>
+                <span className="px-2 py-1 text-xs bg-blue-200 text-blue-800 rounded font-medium">
+                  EXISTING
+                </span>
+              </div>
+              <div className="text-sm text-gray-700 mt-1">
+                {node.wbs_name}
+              </div>
+            </div>
+          </div>
+
+          {hasChildren && isExpanded && (
+            <div className="ml-2">
+              {node.children.map(child => renderNode(child, level + 1))}
+            </div>
+          )}
+        </div>
+      );
+    };
+
+    return (
+      <div className="bg-white rounded-xl shadow-lg p-6">
+        <div className="flex items-center justify-between mb-6">
+          <h3 className="text-xl font-bold" style={{ color: colors.darkBlue }}>
+            📊 Existing P6 WBS Structure ({wbsElements.length} elements)
+          </h3>
+          
+          <div className="flex gap-3">
+            <button
+              onClick={expandAll}
+              className="px-3 py-2 text-sm bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
+            >
+              Expand All
+            </button>
+            <button
+              onClick={collapseAll}
+              className="px-3 py-2 text-sm bg-gray-100 text-gray-700 rounded hover:bg-gray-200"
+            >
+              Collapse All
+            </button>
+          </div>
+        </div>
+
+        <div className="mb-4 p-4 bg-blue-50 rounded-lg">
+          <h4 className="font-semibold text-blue-800 mb-2">
+            ✅ P6 Project: {projectInfo?.projectName || 'Unknown'}
+          </h4>
+          <p className="text-sm text-blue-700">
+            This shows all WBS elements from your P6 export. Verify the structure and codes are correct before adding new equipment.
+          </p>
+        </div>
+
+        <div className="max-h-96 overflow-y-auto border rounded p-4">
+          {hierarchy.map(node => renderNode(node))}
+        </div>
+      </div>
+    );
+  };
+
   // Upload step
   const renderUploadStep = () => (
     <div className="bg-white rounded-xl shadow-lg p-8">
@@ -287,9 +383,8 @@ const ContinueProject = ({ onWBSGenerated }) => {
         </h4>
         <ul className="text-sm space-y-1 text-gray-700">
           <li>• Upload your P6 XER export file</li>
-          <li>• Analyzes existing subsystems (S1, S2, etc.)</li>
-          <li>• Identifies parent structures (Prerequisites, Milestones)</li>
-          <li>• Ready to add new equipment with intelligent WBS codes</li>
+          <li>• Review the existing WBS structure</li>
+          <li>• Add new equipment with intelligent WBS codes</li>
         </ul>
       </div>
 
@@ -344,7 +439,7 @@ const ContinueProject = ({ onWBSGenerated }) => {
     </div>
   );
 
-  // Project selection
+  // Project selection - same as before
   const renderProjectSelection = () => (
     <div className="bg-white rounded-xl shadow-lg p-8">
       <h2 className="text-2xl font-bold mb-6" style={{ color: colors.darkBlue }}>
@@ -355,7 +450,7 @@ const ContinueProject = ({ onWBSGenerated }) => {
         <h4 className="font-semibold text-blue-800 mb-2">📊 Available Projects</h4>
         <p className="text-sm text-blue-700">
           Found {String(availableProjects?.length || 0)} project{availableProjects?.length === 1 ? '' : 's'} in your XER file. 
-          Please review the project details and click to select the one you want to continue with:
+          Click to select the project you want to continue:
         </p>
       </div>
 
@@ -379,27 +474,8 @@ const ContinueProject = ({ onWBSGenerated }) => {
                     <span className="font-medium">Project ID:</span> {String(project?.proj_id || 'N/A')}
                   </div>
                   <div>
-                    <span className="font-medium">Project Code:</span> {String(project?.project_code || 'N/A')}
-                  </div>
-                  <div>
                     <span className="font-medium">WBS Elements:</span> {String(project?.wbs_element_count || 0)}
                   </div>
-                  <div>
-                    <span className="font-medium">Status:</span> Active
-                  </div>
-                </div>
-                {project?.plan_start_date && project?.plan_end_date && (
-                  <div className="mt-2 text-sm text-gray-500">
-                    <span className="font-medium">Schedule:</span> {String(project.plan_start_date)} - {String(project.plan_end_date)}
-                  </div>
-                )}
-                <div className="mt-2">
-                  <span className="inline-block px-2 py-1 text-xs font-medium bg-green-100 text-green-800 rounded mr-2">
-                    Ready for Equipment Addition
-                  </span>
-                  <span className="inline-block px-2 py-1 text-xs font-medium bg-blue-100 text-blue-800 rounded">
-                    Click to Select →
-                  </span>
                 </div>
               </div>
               
@@ -424,7 +500,7 @@ const ContinueProject = ({ onWBSGenerated }) => {
             <div>
               <p className="font-medium text-blue-800">Processing Selected Project</p>
               <p className="text-sm text-blue-600">
-                Building WBS hierarchy and identifying parent structures...
+                Loading WBS structure for review...
               </p>
             </div>
           </div>
@@ -454,12 +530,51 @@ const ContinueProject = ({ onWBSGenerated }) => {
     </div>
   );
 
-  // Equipment upload step with enhanced filtering info
+  // NEW: XER Review Step
+  const renderXERReview = () => {
+    if (!projectResults) return null;
+
+    return (
+      <div className="space-y-6">
+        <XERStructureViewer 
+          wbsElements={projectResults.wbsElements || []}
+          projectInfo={projectResults.projectInfo || {}}
+        />
+        
+        <div className="bg-white rounded-xl shadow-lg p-6">
+          <h3 className="text-xl font-bold mb-4" style={{ color: colors.darkBlue }}>
+            📦 Next: Add New Equipment
+          </h3>
+          <p className="text-gray-700 mb-4">
+            The existing WBS structure has been loaded. Now upload your equipment list to add new items to this project.
+          </p>
+          
+          <div className="flex gap-4">
+            <button
+              onClick={() => setStep('equipment')}
+              className="px-6 py-3 text-white rounded-lg font-medium"
+              style={{ backgroundColor: colors.orange }}
+            >
+              <Plus className="w-4 h-4 inline mr-2" />
+              Continue to Add Equipment
+            </button>
+            
+            <button
+              onClick={() => setStep('selecting')}
+              className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+            >
+              Choose Different Project
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // Equipment upload step 
   const renderEquipmentStep = () => {
     const projectInfo = projectResults?.projectInfo || {};
-    const parentStructures = projectResults?.parentStructures || {};
     const totalElements = Number(projectResults?.totalElements || 0);
-    const subsystemCount = Number(parentStructures?.subsystems?.length || 0);
     const projectName = String(projectInfo?.projectName || 'Unknown Project');
     
     return (
@@ -468,17 +583,15 @@ const ContinueProject = ({ onWBSGenerated }) => {
           📦 Add New Equipment
         </h2>
 
-        {/* Project Summary */}
         <div className="mb-6 p-4 bg-green-50 rounded-lg">
           <h3 className="font-semibold text-green-800 mb-2">
             ✅ Project Loaded: {projectName}
           </h3>
           <p className="text-sm text-green-700">
-            {String(totalElements)} WBS elements • {String(subsystemCount)} existing subsystems
+            {String(totalElements)} existing WBS elements ready for equipment addition
           </p>
         </div>
 
-        {/* ENHANCED: Commissioning Filter Warning */}
         <div className="mb-6 p-4 bg-yellow-50 border-l-4 border-yellow-400 rounded">
           <h4 className="font-semibold text-yellow-800 mb-2">📋 Equipment Filtering</h4>
           <ul className="text-sm text-yellow-700 space-y-1">
@@ -488,7 +601,6 @@ const ContinueProject = ({ onWBSGenerated }) => {
           </ul>
         </div>
 
-        {/* Equipment File Upload */}
         <div className="border-2 border-dashed rounded-lg p-8 text-center mb-6" 
              style={{ borderColor: equipmentData ? colors.lightGreen : colors.darkGreen }}>
           <FileText className="w-12 h-12 mx-auto mb-4" 
@@ -501,9 +613,6 @@ const ContinueProject = ({ onWBSGenerated }) => {
               </h3>
               <p className="text-gray-600 mb-2">
                 <strong>{String(equipmentData?.length || 0)} valid equipment items</strong> ready for integration
-              </p>
-              <p className="text-sm text-gray-500 mb-4">
-                (After filtering: only Y and TBC items included)
               </p>
               <button
                 onClick={() => equipmentFileInputRef.current?.click()}
@@ -548,7 +657,6 @@ const ContinueProject = ({ onWBSGenerated }) => {
           />
         </div>
 
-        {/* Integration Button */}
         {equipmentData && Array.isArray(equipmentData) && equipmentData.length > 0 && (
           <div className="text-center mb-6">
             <button
@@ -574,10 +682,10 @@ const ContinueProject = ({ onWBSGenerated }) => {
 
         <div className="flex gap-3">
           <button
-            onClick={() => setStep('selecting')}
+            onClick={() => setStep('xerReview')}
             className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
           >
-            Back to Project Selection
+            Back to WBS Review
           </button>
           <button
             onClick={handleStartOver}
@@ -602,8 +710,8 @@ const ContinueProject = ({ onWBSGenerated }) => {
     );
   };
 
-  // Complete step
-  const renderResults = () => {
+  // Integration complete step
+  const renderIntegratedStep = () => {
     const summary = integrationResult?.summary || {};
     
     return (
@@ -614,7 +722,7 @@ const ContinueProject = ({ onWBSGenerated }) => {
 
         <div className="mb-6 p-6 bg-green-50 rounded-lg">
           <h3 className="text-xl font-semibold mb-4" style={{ color: colors.darkBlue }}>
-            Successfully Added New Subsystem
+            ✅ Equipment Successfully Integrated
           </h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
@@ -625,18 +733,17 @@ const ContinueProject = ({ onWBSGenerated }) => {
             <div>
               <p><strong>Prerequisite Entries:</strong> {String(summary?.prerequisiteEntries || 0)}</p>
               <p><strong>Subsystems Added:</strong> {String(summary?.subsystems || 0)}</p>
-              <p><strong>Integration Status:</strong> ✅ Success</p>
+              <p><strong>Zone Code:</strong> {String(summary?.zoneCode || '')}</p>
             </div>
           </div>
-          
-          {summary?.zoneCode && (
-            <div className="mt-4 p-3 bg-blue-50 rounded-lg">
-              <p className="text-sm">
-                <strong>Zone Code:</strong> {String(summary.zoneCode)} | 
-                <strong> Subsystem:</strong> S{String(summary?.subsystemNumber || 0)}
-              </p>
-            </div>
-          )}
+        </div>
+
+        <div className="mb-6 p-4 bg-blue-50 rounded-lg">
+          <h4 className="font-semibold text-blue-800 mb-2">📊 View Results</h4>
+          <p className="text-sm text-blue-700">
+            Scroll down to see the combined WBS structure with existing (EXISTING badges) and new (NEW badges) items.
+            Verify the WBS codes are correct before exporting to P6.
+          </p>
         </div>
 
         <div className="flex gap-4">
@@ -652,11 +759,12 @@ const ContinueProject = ({ onWBSGenerated }) => {
   };
 
   return (
-    <div className="max-w-4xl mx-auto p-6">
+    <div className="max-w-6xl mx-auto p-6 space-y-6">
       {step === 'upload' && renderUploadStep()}
       {step === 'selecting' && renderProjectSelection()}
+      {step === 'xerReview' && renderXERReview()}
       {step === 'equipment' && renderEquipmentStep()}
-      {step === 'complete' && renderResults()}
+      {step === 'integrated' && renderIntegratedStep()}
     </div>
   );
 };
