@@ -1,4 +1,4 @@
-// src/components/WBSGenerator.jsx - Enhanced WBS Generator with improved Continue Project workflow
+// src/components/WBSGenerator.jsx - Enhanced WBS Generator with FIXED Continue Project integration
 
 import React, { useState, useRef, createContext, useContext } from 'react';
 import { 
@@ -182,7 +182,7 @@ const WBSGenerator = () => {
     }
   };
 
-  // Enhanced WBS generation handler with continue project support
+  // FIXED: Enhanced WBS generation handler with corrected continue project support
   const generateWBSHandler = async (data) => {
     try {
       console.log(`🏗️ Generating WBS - Mode: ${uploadMode}`);
@@ -191,10 +191,32 @@ const WBSGenerator = () => {
       
       if (uploadMode === uploadModes.CONTINUE_PROJECT && projectState) {
         try {
-          // Use existing continue project integration logic
+          // FIXED: Extract subsystem name from equipment data
+          const firstItem = data.find(item => item?.subsystem);
+          const subsystemName = firstItem?.subsystem || 'New Subsystem';
+          
+          // FIXED: Use correct parameter order
           const { processContinueProjectWBS } = await import('./utils/continueProjectIntegration.js');
-          result = await processContinueProjectWBS(data, projectState, projectName);
-          console.log('✅ Using existing continue project integration');
+          result = await processContinueProjectWBS(
+            projectState.wbsNodes || projectState.originalXERData || [], // existingWBSNodes
+            data, // equipmentList
+            projectState.projectName || projectName, // projectName
+            subsystemName // subsystemName
+          );
+          
+          // Transform result to match expected format
+          result = {
+            allNodes: [...(projectState.wbsNodes || []), ...(result.newElements || [])],
+            newNodes: result.newElements || [],
+            projectState: {
+              ...projectState,
+              subsystems: [...(projectState.subsystems || []), subsystemName],
+              lastWbsCode: (projectState.lastWbsCode || 0) + 1,
+              timestamp: new Date().toISOString()
+            }
+          };
+          
+          console.log('✅ Using enhanced continue project integration');
         } catch (continueError) {
           console.warn('Continue project integration failed, falling back to standard generation:', continueError);
           result = generateWBS(data, projectName, projectState, uploadMode);
