@@ -1,4 +1,4 @@
-// src/components/WBSGenerator.jsx - Enhanced WBS Generator with FIXED Continue Project integration
+// src/components/WBSGenerator.jsx - Complete fix for React error #130
 
 import React, { useState, useRef, createContext, useContext } from 'react';
 import { 
@@ -13,6 +13,37 @@ import { generateWBS, generateMissingEquipmentWBS } from './utils/wbsUtils.js';
 
 // Import the full WBS Tree Visualization component
 import WBSTreeVisualization from './shared/WBSTreeVisualization.jsx';
+
+// SAFETY: Ensure all values are safe for React rendering
+const safeString = (value) => {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'object') return JSON.stringify(value);
+  return String(value);
+};
+
+const safeNumber = (value) => {
+  const num = Number(value);
+  return isNaN(num) ? 0 : num;
+};
+
+const sanitizeWBSNode = (node) => {
+  if (!node || typeof node !== 'object') return null;
+  
+  return {
+    wbs_code: safeString(node.wbs_code),
+    parent_wbs_code: safeString(node.parent_wbs_code),
+    wbs_name: safeString(node.wbs_name),
+    wbs_id: safeString(node.wbs_id),
+    element_type: safeString(node.element_type),
+    is_new: Boolean(node.is_new),
+    is_existing: Boolean(node.is_existing)
+  };
+};
+
+const sanitizeWBSArray = (array) => {
+  if (!Array.isArray(array)) return [];
+  return array.map(sanitizeWBSNode).filter(node => node !== null);
+};
 
 // Project Context for state management
 const ProjectContext = createContext({
@@ -171,8 +202,8 @@ const WBSGenerator = () => {
         
         setProjectState(loadedState);
         setProjectName(loadedState.projectName);
-        setWbsVisualization(loadedState.wbsNodes);
-        setWbsOutput(loadedState.wbsNodes);
+        setWbsVisualization(sanitizeWBSArray(loadedState.wbsNodes));
+        setWbsOutput(sanitizeWBSArray(loadedState.wbsNodes));
         console.log('✅ Enhanced WBS structure loaded for continue mode');
       }
       
@@ -182,7 +213,7 @@ const WBSGenerator = () => {
     }
   };
 
-  // FIXED: Enhanced WBS generation handler with corrected continue project support
+  // FIXED: Enhanced WBS generation handler with complete error handling
   const generateWBSHandler = async (data) => {
     try {
       console.log(`🏗️ Generating WBS - Mode: ${uploadMode}`);
@@ -191,54 +222,60 @@ const WBSGenerator = () => {
       
       if (uploadMode === uploadModes.CONTINUE_PROJECT && projectState) {
         try {
-          // FIXED: Extract subsystem name from equipment data
+          // Extract subsystem name from equipment data
           const firstItem = data.find(item => item?.subsystem);
           const subsystemName = firstItem?.subsystem || 'New Subsystem';
           
-          // FIXED: Use correct parameter order
+          // Use correct parameter order
           const { processContinueProjectWBS } = await import('./utils/continueProjectIntegration.js');
-          result = await processContinueProjectWBS(
+          const integrationResult = await processContinueProjectWBS(
             projectState.wbsNodes || projectState.originalXERData || [], // existingWBSNodes
             data, // equipmentList
             projectState.projectName || projectName, // projectName
             subsystemName // subsystemName
           );
           
-          // FIXED: Transform result to match expected format with safe primitive values
+          console.log('🔧 Integration result received:', integrationResult);
+          
+          // FIXED: Completely safe data transformation
+          const allNodes = [
+            ...(projectState.wbsNodes || []),
+            ...(integrationResult.newElements || [])
+          ];
+          
+          const newNodes = integrationResult.newElements || [];
+          
+          console.log('📊 Processing nodes for React safety:');
+          console.log(`   All nodes: ${allNodes.length}`);
+          console.log(`   New nodes: ${newNodes.length}`);
+          
+          // Sanitize all data before setting state
+          const safeAllNodes = sanitizeWBSArray(allNodes);
+          const safeNewNodes = sanitizeWBSArray(newNodes);
+          
+          console.log('✅ Sanitized nodes:');
+          console.log(`   Safe all nodes: ${safeAllNodes.length}`);
+          console.log(`   Safe new nodes: ${safeNewNodes.length}`);
+          
+          // Create completely safe result object
           result = {
-            allNodes: [...(projectState.wbsNodes || []), ...(result.newElements || [])].map(node => ({
-              ...node,
-              wbs_code: String(node.wbs_code || ''),
-              parent_wbs_code: String(node.parent_wbs_code || ''),
-              wbs_name: String(node.wbs_name || ''),
-              wbs_id: String(node.wbs_id || '')
-            })),
-            newNodes: (result.newElements || []).map(node => ({
-              ...node,
-              wbs_code: String(node.wbs_code || ''),
-              parent_wbs_code: String(node.parent_wbs_code || ''),
-              wbs_name: String(node.wbs_name || ''),
-              wbs_id: String(node.wbs_id || '')
-            })),
+            allNodes: safeAllNodes,
+            newNodes: safeNewNodes,
             projectState: {
-              projectName: String(projectState.projectName || 'Unknown Project'),
-              totalElements: Number(projectState.totalElements || 0),
-              subsystems: [...(projectState.subsystems || []), String(subsystemName)].map(s => String(s)),
-              lastWbsCode: Number((projectState.lastWbsCode || 0) + 1),
-              timestamp: String(new Date().toISOString()),
-              wbsNodes: [...(projectState.wbsNodes || []), ...(result.newElements || [])].map(node => ({
-                ...node,
-                wbs_code: String(node.wbs_code || ''),
-                parent_wbs_code: String(node.parent_wbs_code || ''),
-                wbs_name: String(node.wbs_name || ''),
-                wbs_id: String(node.wbs_id || '')
-              }))
+              projectName: safeString(projectState.projectName || 'Unknown Project'),
+              totalElements: safeNumber(projectState.totalElements || 0),
+              subsystems: [...(projectState.subsystems || []), subsystemName].map(safeString),
+              lastWbsCode: safeNumber((projectState.lastWbsCode || 0) + 1),
+              timestamp: safeString(new Date().toISOString()),
+              wbsNodes: safeAllNodes
             }
           };
           
           console.log('✅ Using enhanced continue project integration');
+          
         } catch (continueError) {
-          console.warn('Continue project integration failed, falling back to standard generation:', continueError);
+          console.error('❌ Continue project integration failed:', continueError);
+          console.warn('Falling back to standard generation');
           result = generateWBS(data, projectName, projectState, uploadMode);
         }
       } else {
@@ -246,19 +283,49 @@ const WBSGenerator = () => {
         result = generateWBS(data, projectName, projectState, uploadMode);
       }
       
-      if (uploadMode === uploadModes.NEW_PROJECT) {
-        setWbsVisualization(result.allNodes);
-        setWbsOutput(result.allNodes);
-      } else {
-        setWbsVisualization(result.allNodes);
-        setWbsOutput(result.newNodes);
+      // SAFETY: Ensure result is properly structured
+      if (!result || typeof result !== 'object') {
+        throw new Error('Invalid result from WBS generation');
       }
       
-      setProjectState(result.projectState);
-      console.log('✅ WBS generation complete');
+      // SAFETY: Sanitize arrays before setting state
+      const safeAllNodes = sanitizeWBSArray(result.allNodes || []);
+      const safeNewNodes = sanitizeWBSArray(result.newNodes || []);
+      
+      console.log('🛡️ Final safety check before state update:');
+      console.log(`   Safe visualization nodes: ${safeAllNodes.length}`);
+      console.log(`   Safe output nodes: ${uploadMode === uploadModes.NEW_PROJECT ? safeAllNodes.length : safeNewNodes.length}`);
+      
+      // Update visualization with safe data
+      setWbsVisualization(safeAllNodes);
+      
+      // Update output based on mode
+      if (uploadMode === uploadModes.NEW_PROJECT) {
+        setWbsOutput(safeAllNodes);
+      } else {
+        setWbsOutput(safeNewNodes);
+      }
+      
+      // Update project state safely
+      if (result.projectState) {
+        const safeProjectState = {
+          ...result.projectState,
+          projectName: safeString(result.projectState.projectName),
+          totalElements: safeNumber(result.projectState.totalElements),
+          lastWbsCode: safeNumber(result.projectState.lastWbsCode),
+          timestamp: safeString(result.projectState.timestamp),
+          subsystems: Array.isArray(result.projectState.subsystems) 
+            ? result.projectState.subsystems.map(safeString) 
+            : [],
+          wbsNodes: sanitizeWBSArray(result.projectState.wbsNodes || [])
+        };
+        setProjectState(safeProjectState);
+      }
+      
+      console.log('✅ WBS generation complete - all data sanitized');
       
     } catch (error) {
-      console.error('WBS generation error:', error);
+      console.error('❌ WBS generation error:', error);
       alert(error.message || 'Error generating WBS structure');
     }
   };
@@ -279,15 +346,24 @@ const WBSGenerator = () => {
         missingEquipmentConfig.existingProjectName
       );
       
-      setMissingEquipmentAnalysis(result.analysis);
-      setWbsVisualization(result.allNodes);
-      setWbsOutput(result.newNodes);
-      setProjectName(result.projectName);
+      // Sanitize missing equipment analysis
+      const safeAnalysis = {
+        newEquipment: Array.isArray(result.analysis?.newEquipment) ? result.analysis.newEquipment : [],
+        existingEquipment: Array.isArray(result.analysis?.existingEquipment) ? result.analysis.existingEquipment : [],
+        removedEquipment: Array.isArray(result.analysis?.removedEquipment) 
+          ? result.analysis.removedEquipment.map(safeString) 
+          : []
+      };
       
-      if (result.newNodes.length === 0) {
+      setMissingEquipmentAnalysis(safeAnalysis);
+      setWbsVisualization(sanitizeWBSArray(result.allNodes));
+      setWbsOutput(sanitizeWBSArray(result.newNodes));
+      setProjectName(safeString(result.projectName));
+      
+      if ((result.newNodes || []).length === 0) {
         alert(errorMessages.MISSING_EQUIPMENT_NONE);
       } else {
-        console.log(`✅ Missing equipment WBS complete - ${result.newNodes.length} new nodes`);
+        console.log(`✅ Missing equipment WBS complete - ${(result.newNodes || []).length} new nodes`);
       }
       
     } catch (error) {
@@ -426,12 +502,14 @@ const WBSGenerator = () => {
       {/* WBS Output */}
       {(wbsOutput.length > 0 || wbsVisualization.length > 0) && (
         <div className="space-y-6">
-          <WBSTreeVisualization wbsNodes={wbsVisualization.length > 0 ? wbsVisualization : wbsOutput} />
+          <WBSTreeVisualization 
+            wbsNodes={wbsVisualization.length > 0 ? wbsVisualization : wbsOutput} 
+          />
           
           <ExportPanel
             uploadMode={uploadMode}
             wbsOutput={wbsOutput}
-            projectName={projectName}
+            projectName={safeString(projectName)}
             equipmentData={equipmentData}
             missingEquipmentAnalysis={missingEquipmentAnalysis}
             projectState={projectState}
@@ -470,8 +548,8 @@ const StartNewProjectMode = ({ projectName, setProjectName, fileInputRef, handle
       </label>
       <input
         type="text"
-        value={projectName}
-        onChange={(e) => setProjectName(e.target.value)}
+        value={safeString(projectName)}
+        onChange={(e) => setProjectName(safeString(e.target.value))}
         className="w-full p-3 border-2 rounded-lg focus:outline-none"
         style={{ borderColor: rjeColors.lightGreen }}
         placeholder="Enter your project name..."
@@ -539,19 +617,19 @@ const EnhancedContinueProjectMode = ({
         const projectResult = await processSelectedProject(analysis, analysis.availableProjects[0].proj_id);
         
         const loadedState = {
-          projectName: projectResult.projectInfo.projectName,
-          totalElements: projectResult.totalElements,
-          wbsNodes: projectResult.wbsElements?.map(element => ({
+          projectName: safeString(projectResult.projectInfo.projectName),
+          totalElements: safeNumber(projectResult.totalElements),
+          wbsNodes: sanitizeWBSArray(projectResult.wbsElements?.map(element => ({
             wbs_code: element.wbs_short_name || element.wbs_id,
             parent_wbs_code: element.parent_wbs_id || null,
             wbs_name: element.wbs_name,
             wbs_id: element.wbs_id,
             is_existing: true
-          })) || [],
+          })) || []),
           parentStructures: projectResult.parentStructures,
           projectInfo: projectResult.projectInfo,
           originalXERData: projectResult.wbsElements,
-          timestamp: new Date().toISOString()
+          timestamp: safeString(new Date().toISOString())
         };
         
         setProjectState(loadedState);
@@ -566,7 +644,7 @@ const EnhancedContinueProjectMode = ({
 
     } catch (error) {
       console.error('🚫 XER Analysis failed:', error);
-      setError('Failed to analyze XER file: ' + error.message);
+      setError('Failed to analyze XER file: ' + safeString(error.message));
     } finally {
       setIsAnalyzing(false);
     }
@@ -578,25 +656,25 @@ const EnhancedContinueProjectMode = ({
     setError(null);
 
     try {
-      console.log(`🏗️ Processing selected project: ${project.project_name}`);
+      console.log(`🏗️ Processing selected project: ${safeString(project.project_name)}`);
       
       const { processSelectedProject } = await import('./utils/xerParser.js');
       const projectResult = await processSelectedProject(analysisResult, project.proj_id);
       
       const loadedState = {
-        projectName: projectResult.projectInfo.projectName,
-        totalElements: projectResult.totalElements,
-        wbsNodes: projectResult.wbsElements?.map(element => ({
+        projectName: safeString(projectResult.projectInfo.projectName),
+        totalElements: safeNumber(projectResult.totalElements),
+        wbsNodes: sanitizeWBSArray(projectResult.wbsElements?.map(element => ({
           wbs_code: element.wbs_short_name || element.wbs_id,
           parent_wbs_code: element.parent_wbs_id || null,
           wbs_name: element.wbs_name,
           wbs_id: element.wbs_id,
           is_existing: true
-        })) || [],
+        })) || []),
         parentStructures: projectResult.parentStructures,
         projectInfo: projectResult.projectInfo,
         originalXERData: projectResult.wbsElements,
-        timestamp: new Date().toISOString()
+        timestamp: safeString(new Date().toISOString())
       };
       
       setProjectState(loadedState);
@@ -605,7 +683,7 @@ const EnhancedContinueProjectMode = ({
 
     } catch (error) {
       console.error('🚫 Project processing failed:', error);
-      setError('Failed to process selected project: ' + error.message);
+      setError('Failed to process selected project: ' + safeString(error.message));
     } finally {
       setIsAnalyzing(false);
     }
@@ -685,7 +763,7 @@ const EnhancedContinueProjectMode = ({
               <AlertTriangle className="w-5 h-5 text-red-500 mr-2" />
               <div>
                 <p className="font-medium text-red-800">Analysis Failed</p>
-                <p className="text-sm text-red-700">{error}</p>
+                <p className="text-sm text-red-700">{safeString(error)}</p>
               </div>
             </div>
           </div>
@@ -705,7 +783,7 @@ const EnhancedContinueProjectMode = ({
         <div className="mb-6 p-4 bg-blue-50 rounded-lg">
           <h4 className="font-semibold text-blue-800 mb-2">📊 Available Projects</h4>
           <p className="text-sm text-blue-700">
-            Found {availableProjects.length} project{availableProjects.length === 1 ? '' : 's'} in your XER file. 
+            Found {safeString(availableProjects.length)} project{availableProjects.length === 1 ? '' : 's'} in your XER file. 
             Please select the project you want to continue:
           </p>
         </div>
@@ -713,7 +791,7 @@ const EnhancedContinueProjectMode = ({
         <div className="space-y-4">
           {availableProjects.map((project) => (
             <div
-              key={project.proj_id}
+              key={safeString(project.proj_id)}
               className="border-2 rounded-lg p-4 cursor-pointer transition-all duration-200 hover:shadow-lg hover:border-blue-300"
               style={{ 
                 borderColor: selectedProject?.proj_id === project.proj_id ? rjeColors.darkGreen : '#e5e7eb'
@@ -723,17 +801,17 @@ const EnhancedContinueProjectMode = ({
               <div className="flex items-center justify-between">
                 <div className="flex-1">
                   <h3 className="text-lg font-semibold" style={{ color: rjeColors.darkBlue }}>
-                    {project.project_name}
+                    {safeString(project.project_name)}
                   </h3>
                   <div className="grid grid-cols-2 gap-4 mt-2 text-sm text-gray-600">
                     <div>
-                      <span className="font-medium">Project ID:</span> {project.proj_id}
+                      <span className="font-medium">Project ID:</span> {safeString(project.proj_id)}
                     </div>
                     <div>
-                      <span className="font-medium">Project Code:</span> {project.project_code}
+                      <span className="font-medium">Project Code:</span> {safeString(project.project_code)}
                     </div>
                     <div>
-                      <span className="font-medium">WBS Elements:</span> {project.wbs_element_count}
+                      <span className="font-medium">WBS Elements:</span> {safeString(project.wbs_element_count)}
                     </div>
                     <div>
                       <span className="font-medium">Status:</span> Ready
@@ -784,7 +862,7 @@ const EnhancedContinueProjectMode = ({
               <AlertTriangle className="w-5 h-5 text-red-500 mr-2" />
               <div>
                 <p className="font-medium text-red-800">Processing Failed</p>
-                <p className="text-sm text-red-700">{error}</p>
+                <p className="text-sm text-red-700">{safeString(error)}</p>
               </div>
             </div>
           </div>
@@ -805,16 +883,16 @@ const EnhancedContinueProjectMode = ({
 
         <div className="mb-6 p-6 bg-green-50 rounded-lg">
           <h3 className="text-xl font-semibold mb-4" style={{ color: rjeColors.darkBlue }}>
-            Project: {projectInfo?.projectName || projectState.projectName}
+            Project: {safeString(projectInfo?.projectName || projectState.projectName)}
           </h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <p><strong>Project ID:</strong> {projectInfo?.projectId || 'N/A'}</p>
-              <p><strong>Total Elements:</strong> {totalElements || 0}</p>
+              <p><strong>Project ID:</strong> {safeString(projectInfo?.projectId || 'N/A')}</p>
+              <p><strong>Total Elements:</strong> {safeString(totalElements || 0)}</p>
             </div>
             <div>
-              <p><strong>Existing Subsystems:</strong> {parentStructures?.subsystems?.length || 0}</p>
-              <p><strong>Next Subsystem:</strong> S{(parentStructures?.subsystems?.length || 0) + 1}</p>
+              <p><strong>Existing Subsystems:</strong> {safeString(parentStructures?.subsystems?.length || 0)}</p>
+              <p><strong>Next Subsystem:</strong> S{safeString((parentStructures?.subsystems?.length || 0) + 1)}</p>
             </div>
           </div>
         </div>
@@ -962,7 +1040,7 @@ const MissingEquipmentMode = ({
         </button>
         {missingEquipmentConfig.existingWbsNodes && (
           <div className="mt-3 text-sm text-green-600">
-            ✅ Loaded: {missingEquipmentConfig.existingProjectName} - {missingEquipmentConfig.existingWbsNodes.length} WBS nodes
+            ✅ Loaded: {safeString(missingEquipmentConfig.existingProjectName)} - {safeString(missingEquipmentConfig.existingWbsNodes.length)} WBS nodes
           </div>
         )}
       </div>
@@ -998,7 +1076,7 @@ const MissingEquipmentMode = ({
           <div className="mt-6 p-4 rounded-lg" style={{ backgroundColor: '#FED7AA' }}>
             <div className="flex items-center justify-between mb-2">
               <h4 className="font-semibold text-orange-800">
-                ⚠️ {missingEquipmentAnalysis.removedEquipment.length} equipment items were removed from the list
+                ⚠️ {safeString(missingEquipmentAnalysis.removedEquipment.length)} equipment items were removed from the list
               </h4>
               <button
                 onClick={() => setShowRemovedEquipment(!showRemovedEquipment)}
@@ -1015,7 +1093,7 @@ const MissingEquipmentMode = ({
                 <ul className="text-sm space-y-1">
                   {missingEquipmentAnalysis.removedEquipment.map((equipmentNumber, index) => (
                     <li key={index} className="text-gray-700">
-                      • {equipmentNumber}
+                      • {safeString(equipmentNumber)}
                     </li>
                   ))}
                 </ul>
@@ -1042,8 +1120,8 @@ const ExportPanel = ({
   <div className="bg-white rounded-xl shadow-lg p-6">
     <h3 className="text-xl font-bold mb-4" style={{ color: rjeColors.darkBlue }}>
       {uploadMode === uploadModes.MISSING_EQUIPMENT 
-        ? `Export New Equipment (${wbsOutput.length} new items)` 
-        : `Export WBS Structure (${wbsOutput.length} nodes)`
+        ? `Export New Equipment (${safeString(wbsOutput.length)} new items)` 
+        : `Export WBS Structure (${safeString(wbsOutput.length)} nodes)`
       } - WBS Generator v2.0
     </h3>
     
@@ -1076,25 +1154,25 @@ const ExportPanel = ({
       <div className="grid md:grid-cols-4 gap-4 mb-6">
         <div className="text-center p-3 rounded-lg" style={{ backgroundColor: `${rjeColors.mediumGreen}20` }}>
           <div className="text-2xl font-bold" style={{ color: rjeColors.darkBlue }}>
-            {missingEquipmentAnalysis.newEquipment.filter(item => item.commissioning === 'Y').length}
+            {safeString(missingEquipmentAnalysis.newEquipment.filter(item => item.commissioning === 'Y').length)}
           </div>
           <div className="text-sm text-gray-600">New Equipment (Y)</div>
         </div>
         <div className="text-center p-3 rounded-lg" style={{ backgroundColor: `${rjeColors.teal}20` }}>
           <div className="text-2xl font-bold" style={{ color: rjeColors.darkBlue }}>
-            {missingEquipmentAnalysis.newEquipment.filter(item => item.commissioning === 'TBC').length}
+            {safeString(missingEquipmentAnalysis.newEquipment.filter(item => item.commissioning === 'TBC').length)}
           </div>
           <div className="text-sm text-gray-600">New TBC Equipment</div>
         </div>
         <div className="text-center p-3 rounded-lg" style={{ backgroundColor: `${rjeColors.blue}20` }}>
           <div className="text-2xl font-bold" style={{ color: rjeColors.darkBlue }}>
-            {missingEquipmentAnalysis.existingEquipment.length}
+            {safeString(missingEquipmentAnalysis.existingEquipment.length)}
           </div>
           <div className="text-sm text-gray-600">Existing Equipment</div>
         </div>
         <div className="text-center p-3 rounded-lg" style={{ backgroundColor: `${rjeColors.darkBlue}20` }}>
           <div className="text-2xl font-bold text-white" style={{ backgroundColor: rjeColors.darkBlue }}>
-            {missingEquipmentAnalysis.removedEquipment.length}
+            {safeString(missingEquipmentAnalysis.removedEquipment.length)}
           </div>
           <div className="text-sm text-gray-600">Removed Equipment</div>
         </div>
@@ -1103,31 +1181,31 @@ const ExportPanel = ({
       <div className="grid md:grid-cols-5 gap-4 mb-6">
         <div className="text-center p-3 rounded-lg" style={{ backgroundColor: `${rjeColors.mediumGreen}20` }}>
           <div className="text-2xl font-bold" style={{ color: rjeColors.darkBlue }}>
-            {wbsOutput.length}
+            {safeString(wbsOutput.length)}
           </div>
           <div className="text-sm text-gray-600">Total WBS Nodes</div>
         </div>
         <div className="text-center p-3 rounded-lg" style={{ backgroundColor: `${rjeColors.darkGreen}20` }}>
           <div className="text-2xl font-bold" style={{ color: rjeColors.darkBlue }}>
-            {projectState?.subsystems?.length || 0}
+            {safeString(projectState?.subsystems?.length || 0)}
           </div>
           <div className="text-sm text-gray-600">Subsystems</div>
         </div>
         <div className="text-center p-3 rounded-lg" style={{ backgroundColor: `${rjeColors.teal}20` }}>
           <div className="text-2xl font-bold" style={{ color: rjeColors.darkBlue }}>
-            {equipmentData.filter(item => item.commissioning === 'Y').length}
+            {safeString(equipmentData.filter(item => item.commissioning === 'Y').length)}
           </div>
           <div className="text-sm text-gray-600">Commissioned (Y)</div>
         </div>
         <div className="text-center p-3 rounded-lg" style={{ backgroundColor: `${rjeColors.blue}20` }}>
           <div className="text-2xl font-bold" style={{ color: rjeColors.darkBlue }}>
-            {equipmentData.filter(item => item.commissioning === 'TBC').length}
+            {safeString(equipmentData.filter(item => item.commissioning === 'TBC').length)}
           </div>
           <div className="text-sm text-gray-600">TBC Equipment</div>
         </div>
         <div className="text-center p-3 rounded-lg" style={{ backgroundColor: `${rjeColors.darkBlue}20` }}>
           <div className="text-2xl font-bold text-white" style={{ backgroundColor: rjeColors.darkBlue }}>
-            {equipmentData.filter(item => item.commissioning === 'N').length}
+            {safeString(equipmentData.filter(item => item.commissioning === 'N').length)}
           </div>
           <div className="text-sm text-gray-600">Excluded (N)</div>
         </div>
