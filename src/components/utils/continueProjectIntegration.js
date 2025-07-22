@@ -1,9 +1,9 @@
-// src/components/utils/continueProjectIntegration.js - PATTERN-AWARE WBS CODES
-// Fixed to detect and adapt to existing project WBS code patterns (e.g., Project 5737)
+// src/components/utils/continueProjectIntegration.js - FIXED PATTERN DETECTION
+// Fixed to properly detect Project 5737's numeric WBS codes (1001, 1064, etc.)
 
 console.log('📦 Continue Project Integration loaded successfully');
 
-// ADDED: WBS Code Pattern Analysis
+// FIXED: WBS Code Pattern Analysis for Project 5737
 const analyzeWBSCodePattern = (existingElements) => {
   console.log('🔍 PATTERN ANALYSIS: Analyzing existing WBS code patterns...');
   
@@ -16,90 +16,74 @@ const analyzeWBSCodePattern = (existingElements) => {
   console.log(`📊 Found ${wbsCodes.length} WBS codes to analyze`);
   console.log(`🔍 Sample codes:`, wbsCodes.slice(0, 10));
   
-  // Determine the pattern structure
   let pattern = {
-    prefix: '',           // e.g., "5737"
-    levels: [],           // Number of digits at each level
-    separator: '.',       // Usually "."
-    maxCodes: {},         // Highest code found at each level
+    prefix: '',
+    levels: [],
+    separator: '.',
+    maxCodes: {},
     isStandardPattern: false,
-    isProject5737Pattern: false
+    isProject5737Pattern: false,
+    nextLevel1: 2,
+    nextLevel2: 1,
+    nextLevel3: 1
   };
   
-  // Check for Project 5737 pattern (5737.XXXX.XXXX.XXXX)
-  const project5737Codes = wbsCodes.filter(code => code.startsWith('5737.'));
+  // FIXED: Project 5737 Detection - Look for numeric codes in 1000+ range
+  const project5737Codes = wbsCodes.filter(code => {
+    const numCode = parseInt(code);
+    return !isNaN(numCode) && numCode >= 1000 && numCode < 2000;
+  });
+  
+  console.log(`🔍 FIXED: Project 5737 codes found: ${project5737Codes.length}`);
+  console.log(`🔍 FIXED: Sample P5737 codes:`, project5737Codes.slice(0, 10));
   
   if (project5737Codes.length > 10) {
-    console.log('🎯 DETECTED: Project 5737 pattern (5737.XXXX.XXXX.XXXX)');
+    console.log('🎯 FIXED: DETECTED Project 5737 pattern (numeric 1000+ codes)');
     
-    pattern.prefix = '5737';
-    pattern.separator = '.';
     pattern.isProject5737Pattern = true;
     
-    // Analyze Project 5737 structure
-    const levelAnalysis = { 1: [], 2: [], 3: [], 4: [] };
+    // FIXED: Analyze numeric codes for max values
+    const numericCodes = project5737Codes.map(code => parseInt(code)).filter(n => !isNaN(n));
+    const maxCode = Math.max(...numericCodes);
     
-    project5737Codes.forEach(code => {
-      const parts = code.split('.');
-      if (parts.length >= 2 && parts[0] === '5737') {
-        for (let i = 1; i < parts.length; i++) {
-          const levelCode = parseInt(parts[i]) || 0;
-          if (levelAnalysis[i]) {
-            levelAnalysis[i].push(levelCode);
-          }
-        }
-      }
-    });
+    pattern.maxCodes[1] = maxCode;
+    pattern.nextLevel1 = maxCode + 1;
     
-    // Find max codes at each level
-    Object.entries(levelAnalysis).forEach(([level, codes]) => {
-      if (codes.length > 0) {
-        pattern.maxCodes[level] = Math.max(...codes);
-        console.log(`📊 Level ${level} max code: ${pattern.maxCodes[level]} (from ${codes.length} samples)`);
-      }
-    });
-    
-    // Suggest next available codes
-    pattern.nextLevel1 = (pattern.maxCodes[1] || 1000) + 1;  // Next subsystem (e.g., 1065)
-    pattern.nextLevel2 = 1;  // Category starts at 1
-    pattern.nextLevel3 = 1;  // Equipment starts at 1
-    
-    console.log(`✅ PATTERN ANALYSIS COMPLETE for Project 5737:`);
-    console.log(`   Prefix: ${pattern.prefix}`);
-    console.log(`   Next Level 1 (Subsystem): ${pattern.nextLevel1}`);
-    console.log(`   Pattern: ${pattern.prefix}.${pattern.nextLevel1}.XX.XX`);
+    console.log(`📊 FIXED: Project 5737 Analysis:`);
+    console.log(`   Max existing code: ${maxCode}`);
+    console.log(`   Next available code: ${pattern.nextLevel1}`);
+    console.log(`   Pattern: Simple numeric (${pattern.nextLevel1}, ${pattern.nextLevel1 + 1}, etc.)`);
     
   } else {
-    // Standard pattern detection (for future projects)
     console.log('🎯 DETECTED: Standard WBS pattern');
     pattern.isStandardPattern = true;
-    pattern.nextLevel1 = 2; // Standard next subsystem
+    pattern.nextLevel1 = 2;
   }
   
   return pattern;
 };
 
-// ENHANCED: Generate WBS codes that match existing project pattern
+// FIXED: Generate WBS codes for Project 5737 pattern
 const generatePatternAwareWBSCode = (pattern, parentCode, childIndex, elementType) => {
+  console.log(`🔧 FIXED: Generating code for type: ${elementType}, pattern: ${pattern.isProject5737Pattern ? 'P5737' : 'Standard'}`);
+  
   if (pattern.isProject5737Pattern) {
-    // Project 5737 specific code generation
-    if (elementType === 'subsystem') {
-      return `${pattern.prefix}.${pattern.nextLevel1}`;
-    } else if (elementType === 'prerequisite') {
-      // Prerequisites follow existing pattern under P | Pre-Requisites parent
-      return `${pattern.prefix}.${pattern.nextLevel1}`;
+    if (elementType === 'subsystem' || elementType === 'prerequisite') {
+      const code = pattern.nextLevel1.toString();
+      console.log(`✅ FIXED: Generated ${elementType} code: ${code}`);
+      return code;
     } else if (elementType === 'category') {
-      // Categories under subsystem: 5737.1065.01, 5737.1065.02, etc.
-      const paddedCategory = childIndex.toString().padStart(2, '0');
-      return `${parentCode}.${paddedCategory}`;
+      const code = `${parentCode}.${childIndex.toString().padStart(2, '0')}`;
+      console.log(`✅ FIXED: Generated category code: ${code}`);
+      return code;
     } else if (elementType === 'equipment') {
-      // Equipment under category: 5737.1065.01.01, 5737.1065.01.02, etc.
-      const paddedEquipment = childIndex.toString().padStart(2, '0');
-      return `${parentCode}.${paddedEquipment}`;
+      const code = `${parentCode}.${childIndex.toString().padStart(2, '0')}`;
+      console.log(`✅ FIXED: Generated equipment code: ${code}`);
+      return code;
     }
   }
   
-  // Fallback to standard generation
+  // Standard pattern fallback
   if (childIndex !== null) {
     return `${parentCode}.${childIndex.toString().padStart(2, '0')}`;
   }
@@ -294,14 +278,14 @@ const processEquipmentByCategory = (equipmentList) => {
   return categoryGroups;
 };
 
-// MAIN ENHANCED INTEGRATION FUNCTION
+// MAIN FIXED INTEGRATION FUNCTION
 export const processContinueProjectWBS = (
   existingWBSNodes, 
   equipmentList, 
   projectName = 'Sample Project',
   subsystemName = 'New Subsystem'
 ) => {
-  console.log('🎯 ENHANCED processContinueProjectWBS - Pattern-Aware Version');
+  console.log('🎯 FIXED processContinueProjectWBS - Correct Pattern Detection');
   console.log(`📦 Equipment items: ${equipmentList.length}`);
   console.log(`🏗️ Project: ${projectName}`);
   console.log(`🏢 Detected subsystem: "${subsystemName}"`);
@@ -315,7 +299,7 @@ export const processContinueProjectWBS = (
   }
 
   try {
-    // 1. ENHANCED: Analyze WBS code pattern
+    // 1. FIXED: Analyze WBS code pattern
     const wbsPattern = analyzeWBSCodePattern(existingWBSNodes);
     
     // 2. Analyze existing structure
@@ -349,22 +333,23 @@ export const processContinueProjectWBS = (
     
     const categoryGroups = processEquipmentByCategory(validEquipment);
     
-    // 7. Generate new WBS elements with PATTERN-AWARE codes
+    // 7. Generate new WBS elements with FIXED codes
     const newElements = [];
     
     // 7a. Add to Prerequisites (if exists)
     if (structureAnalysis.prerequisites) {
+      const prerequisiteCode = generatePatternAwareWBSCode(wbsPattern, '', null, 'prerequisite');
       const prerequisiteEntry = {
         wbs_id: generateUniqueWBSId([...existingWBSNodes, ...newElements]),
         parent_wbs_id: structureAnalysis.prerequisites.wbs_id,
-        wbs_code: generatePatternAwareWBSCode(wbsPattern, '', null, 'prerequisite'),
-        wbs_short_name: generatePatternAwareWBSCode(wbsPattern, '', null, 'prerequisite'),
+        wbs_code: prerequisiteCode,
+        wbs_short_name: prerequisiteCode,
         wbs_name: `${zoneCode} | ${cleanName}`,
         element_type: 'prerequisite',
         is_new: true
       };
       newElements.push(prerequisiteEntry);
-      console.log(`📋 Created prerequisite: "${prerequisiteEntry.wbs_name}" (Code: ${prerequisiteEntry.wbs_short_name})`);
+      console.log(`📋 FIXED: Created prerequisite: "${prerequisiteEntry.wbs_name}" (Code: ${prerequisiteEntry.wbs_short_name})`);
     }
     
     // 7b. Create main subsystem
@@ -382,9 +367,9 @@ export const processContinueProjectWBS = (
       is_new: true
     };
     newElements.push(mainSubsystem);
-    console.log(`🏢 Created main subsystem: "${mainSubsystem.wbs_name}" (Code: ${mainSubsystem.wbs_short_name})`);
+    console.log(`🏢 FIXED: Created main subsystem: "${mainSubsystem.wbs_name}" (Code: ${mainSubsystem.wbs_short_name})`);
     
-    // 7c. Create category structure with PATTERN-AWARE codes
+    // 7c. Create category structure with FIXED codes
     const orderedCategories = ['02', '03', '04', '05', '06', '07', '08', '09', '10', '99'];
     let categoryIndex = 1;
     
@@ -404,9 +389,9 @@ export const processContinueProjectWBS = (
           is_new: true
         };
         newElements.push(categoryElement);
-        console.log(`📂 Created category: "${categoryElement.wbs_name}" (Code: ${categoryElement.wbs_short_name})`);
+        console.log(`📂 FIXED: Created category: "${categoryElement.wbs_name}" (Code: ${categoryElement.wbs_short_name})`);
         
-        // Add equipment under category with PATTERN-AWARE codes
+        // Add equipment under category with FIXED codes
         let equipmentIndex = 1;
         
         categoryGroups[categoryCode].forEach((equipment) => {
@@ -424,7 +409,7 @@ export const processContinueProjectWBS = (
             is_new: true
           };
           newElements.push(equipmentElement);
-          console.log(`⚙️ Created equipment: "${equipmentElement.wbs_name}" (Code: ${equipmentElement.wbs_short_name})`);
+          console.log(`⚙️ FIXED: Created equipment: "${equipmentElement.wbs_name}" (Code: ${equipmentElement.wbs_short_name})`);
           equipmentIndex++;
         });
         
@@ -443,10 +428,10 @@ export const processContinueProjectWBS = (
       zoneCode: zoneCode,
       existingElements: existingWBSNodes.length,
       newElements: newElements.length,
-      wbsPattern: wbsPattern.isProject5737Pattern ? 'Project 5737 Pattern' : 'Standard Pattern'
+      wbsPattern: wbsPattern.isProject5737Pattern ? 'Project 5737 Pattern (FIXED)' : 'Standard Pattern'
     };
     
-    console.log('✅ ENHANCED Integration complete!');
+    console.log('✅ FIXED Integration complete!');
     console.log(`📊 Summary: ${summary.totalElements} new elements created`);
     console.log(`   - Pattern: ${summary.wbsPattern}`);
     console.log(`   - Prerequisites: ${summary.prerequisiteEntries}`);
