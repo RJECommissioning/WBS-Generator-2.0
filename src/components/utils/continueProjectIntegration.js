@@ -1,7 +1,111 @@
-// src/components/utils/continueProjectIntegration.js - FIXED CATEGORIZATION
-// Fixed -F equipment categorization and parent-child relationships
+// src/components/utils/continueProjectIntegration.js - PATTERN-AWARE WBS CODES
+// Fixed to detect and adapt to existing project WBS code patterns (e.g., Project 5737)
 
 console.log('📦 Continue Project Integration loaded successfully');
+
+// ADDED: WBS Code Pattern Analysis
+const analyzeWBSCodePattern = (existingElements) => {
+  console.log('🔍 PATTERN ANALYSIS: Analyzing existing WBS code patterns...');
+  
+  // Collect all WBS codes from existing elements
+  const wbsCodes = existingElements
+    .map(el => el.wbs_short_name || el.wbs_code)
+    .filter(code => code && code.length > 0)
+    .sort();
+  
+  console.log(`📊 Found ${wbsCodes.length} WBS codes to analyze`);
+  console.log(`🔍 Sample codes:`, wbsCodes.slice(0, 10));
+  
+  // Determine the pattern structure
+  let pattern = {
+    prefix: '',           // e.g., "5737"
+    levels: [],           // Number of digits at each level
+    separator: '.',       // Usually "."
+    maxCodes: {},         // Highest code found at each level
+    isStandardPattern: false,
+    isProject5737Pattern: false
+  };
+  
+  // Check for Project 5737 pattern (5737.XXXX.XXXX.XXXX)
+  const project5737Codes = wbsCodes.filter(code => code.startsWith('5737.'));
+  
+  if (project5737Codes.length > 10) {
+    console.log('🎯 DETECTED: Project 5737 pattern (5737.XXXX.XXXX.XXXX)');
+    
+    pattern.prefix = '5737';
+    pattern.separator = '.';
+    pattern.isProject5737Pattern = true;
+    
+    // Analyze Project 5737 structure
+    const levelAnalysis = { 1: [], 2: [], 3: [], 4: [] };
+    
+    project5737Codes.forEach(code => {
+      const parts = code.split('.');
+      if (parts.length >= 2 && parts[0] === '5737') {
+        for (let i = 1; i < parts.length; i++) {
+          const levelCode = parseInt(parts[i]) || 0;
+          if (levelAnalysis[i]) {
+            levelAnalysis[i].push(levelCode);
+          }
+        }
+      }
+    });
+    
+    // Find max codes at each level
+    Object.entries(levelAnalysis).forEach(([level, codes]) => {
+      if (codes.length > 0) {
+        pattern.maxCodes[level] = Math.max(...codes);
+        console.log(`📊 Level ${level} max code: ${pattern.maxCodes[level]} (from ${codes.length} samples)`);
+      }
+    });
+    
+    // Suggest next available codes
+    pattern.nextLevel1 = (pattern.maxCodes[1] || 1000) + 1;  // Next subsystem (e.g., 1065)
+    pattern.nextLevel2 = 1;  // Category starts at 1
+    pattern.nextLevel3 = 1;  // Equipment starts at 1
+    
+    console.log(`✅ PATTERN ANALYSIS COMPLETE for Project 5737:`);
+    console.log(`   Prefix: ${pattern.prefix}`);
+    console.log(`   Next Level 1 (Subsystem): ${pattern.nextLevel1}`);
+    console.log(`   Pattern: ${pattern.prefix}.${pattern.nextLevel1}.XX.XX`);
+    
+  } else {
+    // Standard pattern detection (for future projects)
+    console.log('🎯 DETECTED: Standard WBS pattern');
+    pattern.isStandardPattern = true;
+    pattern.nextLevel1 = 2; // Standard next subsystem
+  }
+  
+  return pattern;
+};
+
+// ENHANCED: Generate WBS codes that match existing project pattern
+const generatePatternAwareWBSCode = (pattern, parentCode, childIndex, elementType) => {
+  if (pattern.isProject5737Pattern) {
+    // Project 5737 specific code generation
+    if (elementType === 'subsystem') {
+      return `${pattern.prefix}.${pattern.nextLevel1}`;
+    } else if (elementType === 'prerequisite') {
+      // Prerequisites follow existing pattern under P | Pre-Requisites parent
+      return `${pattern.prefix}.${pattern.nextLevel1}`;
+    } else if (elementType === 'category') {
+      // Categories under subsystem: 5737.1065.01, 5737.1065.02, etc.
+      const paddedCategory = childIndex.toString().padStart(2, '0');
+      return `${parentCode}.${paddedCategory}`;
+    } else if (elementType === 'equipment') {
+      // Equipment under category: 5737.1065.01.01, 5737.1065.01.02, etc.
+      const paddedEquipment = childIndex.toString().padStart(2, '0');
+      return `${parentCode}.${paddedEquipment}`;
+    }
+  }
+  
+  // Fallback to standard generation
+  if (childIndex !== null) {
+    return `${parentCode}.${childIndex.toString().padStart(2, '0')}`;
+  }
+  
+  return `${parentCode}.01`;
+};
 
 // KEPT: Your excellent zone code extraction function
 const extractZoneCode = (subsystemName) => {
@@ -13,12 +117,12 @@ const extractZoneCode = (subsystemName) => {
   console.log(`🔍 Extracting zone code from: "${subsystemName}"`);
   
   const patterns = [
-    /\+Z(\d{2})/i,         // +Z02, +Z01 (exact 2 digits after +Z) - HIGHEST PRIORITY
-    /\+Z(\d{1})/i,         // +Z2, +Z1 (single digit after +Z)
-    /\sZ(\d{2})/i,         // Space Z02 (2 digits)
-    /\sZ(\d{1})/i,         // Space Z2 (1 digit) 
-    /-Z(\d{2})/i,          // -Z02 (2 digits)
-    /-Z(\d{1})/i           // -Z2 (1 digit)
+    /\+Z(\d{2})/i,         
+    /\+Z(\d{1})/i,         
+    /\sZ(\d{2})/i,         
+    /\sZ(\d{1})/i,         
+    /-Z(\d{2})/i,          
+    /-Z(\d{1})/i           
   ];
   
   for (const pattern of patterns) {
@@ -106,36 +210,7 @@ const generateUniqueWBSId = (existingElements) => {
   return newId.toString();
 };
 
-// ENHANCED: Generate proper WBS codes
-const generateWBSCode = (parentElement, existingElements, childIndex = null) => {
-  const parentCode = parentElement.wbs_code || parentElement.wbs_short_name;
-  
-  if (!parentCode) {
-    console.warn('⚠️ Parent element missing WBS code, generating fallback');
-    return `NEW_${Date.now()}`;
-  }
-  
-  if (childIndex !== null) {
-    return `${parentCode}.${childIndex.toString().padStart(2, '0')}`;
-  }
-  
-  const existingChildren = existingElements.filter(el => 
-    el.parent_wbs_id === parentElement.wbs_id
-  );
-  
-  const maxChildNumber = existingChildren.reduce((max, child) => {
-    const childCode = child.wbs_code || child.wbs_short_name || '';
-    const parts = childCode.split('.');
-    const lastPart = parts[parts.length - 1];
-    const number = parseInt(lastPart) || 0;
-    return Math.max(max, number);
-  }, 0);
-  
-  const nextNumber = maxChildNumber + 1;
-  return `${parentCode}.${nextNumber.toString().padStart(2, '0')}`;
-};
-
-// FIXED: Enhanced equipment categorization with proper -F handling
+// ENHANCED: Equipment categorization (kept your working version)
 const processEquipmentByCategory = (equipmentList) => {
   console.log('🔧 Processing equipment by category with FIXED -F handling...');
   
@@ -153,68 +228,37 @@ const processEquipmentByCategory = (equipmentList) => {
     '99': 'Unrecognised Equipment'
   };
   
-  // FIXED: Enhanced categorization patterns from README
   const categoryPatterns = {
-    '02': { // Protection Panels
-      patterns: ['+UH', 'UH', '-F', '-KF', '-Y', '-P'], // FIXED: Added -F here!
-      description: 'Protection Panels'
-    },
-    '03': { // HV Switchboards
-      patterns: ['+WA', 'WA'],
-      description: 'HV Switchboards'  
-    },
-    '04': { // LV Switchboards
-      patterns: ['+WC', 'WC'],
-      description: 'LV Switchboards'
-    },
-    '05': { // Transformers
-      patterns: ['T', 'NET', 'TA', 'NER'],
-      description: 'Transformers'
-    },
-    '06': { // Battery Systems  
-      patterns: ['+GB', 'GB', 'BAN'],
-      description: 'Battery Systems'
-    },
-    '07': { // Earthing
-      patterns: ['E', 'EB', 'EEP', 'MEB'],
-      description: 'Earthing'
-    },
-    '08': { // Building Services - Enhanced patterns
-      patterns: ['+HN', 'HN', 'PC', 'FM', 'FIP', 'LT', 'LTP', 'LCT', 'GPO', 'VDO', 'ACS', 'ACR', 'CTV', 'HRN', 'EHT', 'HTP', 'MCP', 'DET', 'ASD', 'IND', 'BEA', 'Fire', 'ESS', 'ESC', '-FM'],
-      description: 'Building Services'
-    },
-    '10': { // Ancillary Systems
-      patterns: ['+CA', 'CA', 'PSU', 'UPS', 'BCR', 'G', 'BSG', 'GTG', 'GT', 'GC', 'WTG', 'SVC', 'HFT', 'RA', 'R', 'FC', 'CP', 'LCS', 'IOP', 'ITP', 'IJB', 'CPU', 'X', 'XB', 'XD', 'H', 'D', 'CB', 'GCB', 'SA', 'LSW', 'MCC', 'DOL', 'VFD', 'ATS', 'MTS', 'Q', 'K', 'SOLB'],
-      description: 'Ancillary Systems'
-    }
+    '02': { patterns: ['+UH', 'UH', '-F', '-KF', '-Y', '-P'], description: 'Protection Panels' },
+    '03': { patterns: ['+WA', 'WA'], description: 'HV Switchboards' },
+    '04': { patterns: ['+WC', 'WC'], description: 'LV Switchboards' },
+    '05': { patterns: ['T', 'NET', 'TA', 'NER'], description: 'Transformers' },
+    '06': { patterns: ['+GB', 'GB', 'BAN'], description: 'Battery Systems' },
+    '07': { patterns: ['E', 'EB', 'EEP', 'MEB'], description: 'Earthing' },
+    '08': { patterns: ['+HN', 'HN', 'PC', 'FM', 'FIP', 'LT', 'LTP', 'LCT', 'GPO', 'VDO', 'ACS', 'ACR', 'CTV', 'HRN', 'EHT', 'HTP', 'MCP', 'DET', 'ASD', 'IND', 'BEA', 'Fire', 'ESS', 'ESC', '-FM'], description: 'Building Services' },
+    '10': { patterns: ['+CA', 'CA', 'PSU', 'UPS', 'BCR', 'G', 'BSG', 'GTG', 'GT', 'GC', 'WTG', 'SVC', 'HFT', 'RA', 'R', 'FC', 'CP', 'LCS', 'IOP', 'ITP', 'IJB', 'CPU', 'X', 'XB', 'XD', 'H', 'D', 'CB', 'GCB', 'SA', 'LSW', 'MCC', 'DOL', 'VFD', 'ATS', 'MTS', 'Q', 'K', 'SOLB'], description: 'Ancillary Systems' }
   };
 
   equipmentList.forEach(item => {
     const equipmentNumber = item.equipmentNumber?.trim() || '';
-    let category = '99'; // Default to unrecognised
+    let category = '99';
     let matchedPattern = '';
     
-    console.log(`🔍 Categorizing: "${equipmentNumber}"`);
-    
-    // FIXED: Enhanced pattern matching with special handling for -F
     for (const [categoryCode, categoryInfo] of Object.entries(categoryPatterns)) {
       for (const pattern of categoryInfo.patterns) {
         let matched = false;
         
         if (pattern.startsWith('+') || pattern.startsWith('-')) {
-          // Exact prefix match for signed patterns
           if (equipmentNumber.startsWith(pattern)) {
             matched = true;
             matchedPattern = pattern;
           }
         } else if (pattern.length <= 3) {
-          // Short pattern matching (but not for longer descriptive patterns)
           if (equipmentNumber.startsWith(pattern) && !equipmentNumber.startsWith('+') && !equipmentNumber.startsWith('-')) {
             matched = true;
             matchedPattern = pattern;
           }
         } else {
-          // Long pattern matching for descriptive patterns
           if (equipmentNumber.includes(pattern) || item.description?.includes(pattern)) {
             matched = true;
             matchedPattern = pattern;
@@ -228,7 +272,7 @@ const processEquipmentByCategory = (equipmentList) => {
         }
       }
       
-      if (category !== '99') break; // Stop searching once we find a match
+      if (category !== '99') break;
     }
     
     if (category === '99') {
@@ -241,7 +285,7 @@ const processEquipmentByCategory = (equipmentList) => {
     categoryGroups[category].push(item);
   });
   
-  // Log summary with special attention to -F items
+  // Log summary
   Object.entries(categoryGroups).forEach(([catCode, items]) => {
     const fItems = items.filter(item => item.equipmentNumber?.startsWith('-F'));
     console.log(`📂 Category ${catCode} (${categoryMapping[catCode]}): ${items.length} items${fItems.length > 0 ? ` (${fItems.length} -F items)` : ''}`);
@@ -250,14 +294,14 @@ const processEquipmentByCategory = (equipmentList) => {
   return categoryGroups;
 };
 
-// ENHANCED: Main integration function
+// MAIN ENHANCED INTEGRATION FUNCTION
 export const processContinueProjectWBS = (
   existingWBSNodes, 
   equipmentList, 
   projectName = 'Sample Project',
   subsystemName = 'New Subsystem'
 ) => {
-  console.log('🎯 processContinueProjectWBS - Enhanced Version');
+  console.log('🎯 ENHANCED processContinueProjectWBS - Pattern-Aware Version');
   console.log(`📦 Equipment items: ${equipmentList.length}`);
   console.log(`🏗️ Project: ${projectName}`);
   console.log(`🏢 Detected subsystem: "${subsystemName}"`);
@@ -271,13 +315,16 @@ export const processContinueProjectWBS = (
   }
 
   try {
-    // 1. Analyze existing structure
+    // 1. ENHANCED: Analyze WBS code pattern
+    const wbsPattern = analyzeWBSCodePattern(existingWBSNodes);
+    
+    // 2. Analyze existing structure
     const structureAnalysis = analyzeExistingStructure(existingWBSNodes);
     
-    // 2. Extract zone code
+    // 3. Extract zone code
     const zoneCode = extractZoneCode(subsystemName);
     
-    // 3. Clean subsystem name
+    // 4. Clean subsystem name
     let cleanName = subsystemName
       .replace(/\+?Z\d+/gi, '')
       .replace(/[-\s]+$/, '')
@@ -287,14 +334,14 @@ export const processContinueProjectWBS = (
     
     cleanName = cleanName.replace(/(\d+)\s*kV/, '$1kV');
     
-    // 4. Calculate next subsystem number
+    // 5. Calculate next subsystem number
     const nextSubsystemNumber = structureAnalysis.subsystems.length > 0 
       ? Math.max(...structureAnalysis.subsystems.map(s => s.number)) + 1 
       : 1;
     
     console.log(`🔢 Next subsystem number: S${nextSubsystemNumber}`);
     
-    // 5. FIXED: Process equipment with enhanced categorization
+    // 6. Process equipment with enhanced categorization
     const validEquipment = equipmentList.filter(item => {
       const commissioning = item.commissioning?.trim();
       return commissioning === 'Y' || commissioning === 'TBC';
@@ -302,165 +349,90 @@ export const processContinueProjectWBS = (
     
     const categoryGroups = processEquipmentByCategory(validEquipment);
     
-    // 6. Generate new WBS elements
+    // 7. Generate new WBS elements with PATTERN-AWARE codes
     const newElements = [];
     
-    // 6a. Add to Prerequisites (if exists)
+    // 7a. Add to Prerequisites (if exists)
     if (structureAnalysis.prerequisites) {
       const prerequisiteEntry = {
         wbs_id: generateUniqueWBSId([...existingWBSNodes, ...newElements]),
         parent_wbs_id: structureAnalysis.prerequisites.wbs_id,
-        wbs_code: generateWBSCode(structureAnalysis.prerequisites, [...existingWBSNodes, ...newElements]),
+        wbs_code: generatePatternAwareWBSCode(wbsPattern, '', null, 'prerequisite'),
+        wbs_short_name: generatePatternAwareWBSCode(wbsPattern, '', null, 'prerequisite'),
         wbs_name: `${zoneCode} | ${cleanName}`,
         element_type: 'prerequisite',
         is_new: true
       };
       newElements.push(prerequisiteEntry);
-      console.log(`📋 Created prerequisite: "${prerequisiteEntry.wbs_name}"`);
+      console.log(`📋 Created prerequisite: "${prerequisiteEntry.wbs_name}" (Code: ${prerequisiteEntry.wbs_short_name})`);
     }
     
-    // 6b. Create main subsystem
+    // 7b. Create main subsystem
     const rootParent = structureAnalysis.rootElement || { wbs_id: '1', wbs_code: '1' };
+    const mainSubsystemCode = generatePatternAwareWBSCode(wbsPattern, '', null, 'subsystem');
+    
     const mainSubsystem = {
       wbs_id: generateUniqueWBSId([...existingWBSNodes, ...newElements]),
       parent_wbs_id: rootParent.wbs_id,
-      wbs_code: generateWBSCode(rootParent, [...existingWBSNodes, ...newElements]),
+      wbs_code: mainSubsystemCode,
+      wbs_short_name: mainSubsystemCode,
       wbs_name: `S${nextSubsystemNumber} | ${zoneCode} - ${cleanName}`,
       element_type: 'subsystem',
       subsystem_code: zoneCode,
       is_new: true
     };
     newElements.push(mainSubsystem);
-    console.log(`🏢 Created main subsystem: "${mainSubsystem.wbs_name}"`);
+    console.log(`🏢 Created main subsystem: "${mainSubsystem.wbs_name}" (Code: ${mainSubsystem.wbs_short_name})`);
     
-    // 6c. Create category structure with parent-child relationships
+    // 7c. Create category structure with PATTERN-AWARE codes
     const orderedCategories = ['02', '03', '04', '05', '06', '07', '08', '09', '10', '99'];
     let categoryIndex = 1;
     
     orderedCategories.forEach(categoryCode => {
       if (categoryGroups[categoryCode] && categoryGroups[categoryCode].length > 0) {
+        
+        const categoryWBSCode = generatePatternAwareWBSCode(wbsPattern, mainSubsystemCode, categoryIndex, 'category');
+        
         // Create category node
         const categoryElement = {
           wbs_id: generateUniqueWBSId([...existingWBSNodes, ...newElements]),
           parent_wbs_id: mainSubsystem.wbs_id,
-          wbs_code: generateWBSCode(mainSubsystem, [...existingWBSNodes, ...newElements], categoryIndex),
+          wbs_code: categoryWBSCode,
+          wbs_short_name: categoryWBSCode,
           wbs_name: `${categoryCode} | ${getCategoryName(categoryCode)}`,
           element_type: 'category',
           is_new: true
         };
         newElements.push(categoryElement);
+        console.log(`📂 Created category: "${categoryElement.wbs_name}" (Code: ${categoryElement.wbs_short_name})`);
         
-        // ENHANCED: Group equipment by parent relationships for protection panels
-        if (categoryCode === '02') {
-          // Group by parent panel for protection equipment
-          const panelGroups = new Map();
-          const standaloneEquipment = [];
+        // Add equipment under category with PATTERN-AWARE codes
+        let equipmentIndex = 1;
+        
+        categoryGroups[categoryCode].forEach((equipment) => {
+          const equipmentWBSCode = generatePatternAwareWBSCode(wbsPattern, categoryWBSCode, equipmentIndex, 'equipment');
           
-          categoryGroups[categoryCode].forEach(equipment => {
-            const equipNum = equipment.equipmentNumber?.trim() || '';
-            
-            // Check if this is a child equipment (like -F102)
-            if (equipNum.match(/^-[A-Z]+\d+$/)) {
-              // This is a child equipment - find its parent from the parent equipment column
-              const parentEquip = equipment.parentEquipmentNumber?.trim();
-              if (parentEquip) {
-                if (!panelGroups.has(parentEquip)) {
-                  panelGroups.set(parentEquip, { parent: null, children: [] });
-                }
-                panelGroups.get(parentEquip).children.push(equipment);
-                console.log(`🔗 Child equipment "${equipNum}" linked to parent "${parentEquip}"`);
-              } else {
-                standaloneEquipment.push(equipment);
-              }
-            } else {
-              // This might be a parent equipment (like +UH101)
-              const existingGroup = panelGroups.get(equipNum);
-              if (existingGroup) {
-                existingGroup.parent = equipment;
-              } else {
-                panelGroups.set(equipNum, { parent: equipment, children: [] });
-              }
-            }
-          });
-          
-          // Create WBS structure with parent-child relationships
-          let equipmentIndex = 1;
-          
-          // First add panel groups (parents with children)
-          panelGroups.forEach((group, panelId) => {
-            if (group.parent) {
-              // Add parent panel
-              const panelElement = {
-                wbs_id: generateUniqueWBSId([...existingWBSNodes, ...newElements]),
-                parent_wbs_id: categoryElement.wbs_id,
-                wbs_code: generateWBSCode(categoryElement, [...existingWBSNodes, ...newElements], equipmentIndex),
-                wbs_name: `${group.parent.equipmentNumber} | ${group.parent.description || ''}`.trim(),
-                element_type: 'equipment',
-                equipment_number: group.parent.equipmentNumber,
-                commissioning: group.parent.commissioning,
-                is_new: true
-              };
-              newElements.push(panelElement);
-              console.log(`🏷️ Created panel: "${panelElement.wbs_name}"`);
-              
-              // Add children under this panel
-              group.children.forEach((child, childIndex) => {
-                const childElement = {
-                  wbs_id: generateUniqueWBSId([...existingWBSNodes, ...newElements]),
-                  parent_wbs_id: panelElement.wbs_id,
-                  wbs_code: generateWBSCode(panelElement, [...existingWBSNodes, ...newElements], childIndex + 1),
-                  wbs_name: `${child.equipmentNumber} | ${child.description || ''}`.trim(),
-                  element_type: 'equipment',
-                  equipment_number: child.equipmentNumber,
-                  commissioning: child.commissioning,
-                  is_new: true
-                };
-                newElements.push(childElement);
-                console.log(`  🔗 Added child: "${childElement.wbs_name}" under "${panelElement.wbs_name}"`);
-              });
-              
-              equipmentIndex++;
-            }
-          });
-          
-          // Add standalone equipment
-          standaloneEquipment.forEach((equipment) => {
-            const equipmentElement = {
-              wbs_id: generateUniqueWBSId([...existingWBSNodes, ...newElements]),
-              parent_wbs_id: categoryElement.wbs_id,
-              wbs_code: generateWBSCode(categoryElement, [...existingWBSNodes, ...newElements], equipmentIndex),
-              wbs_name: `${equipment.equipmentNumber} | ${equipment.description || ''}`.trim(),
-              element_type: 'equipment',
-              equipment_number: equipment.equipmentNumber,
-              commissioning: equipment.commissioning,
-              is_new: true
-            };
-            newElements.push(equipmentElement);
-            equipmentIndex++;
-          });
-          
-        } else {
-          // Standard flat equipment structure for non-protection categories
-          categoryGroups[categoryCode].forEach((equipment, equipIndex) => {
-            const equipmentElement = {
-              wbs_id: generateUniqueWBSId([...existingWBSNodes, ...newElements]),
-              parent_wbs_id: categoryElement.wbs_id,
-              wbs_code: generateWBSCode(categoryElement, [...existingWBSNodes, ...newElements], equipIndex + 1),
-              wbs_name: `${equipment.equipmentNumber} | ${equipment.description || ''}`.trim(),
-              element_type: 'equipment',
-              equipment_number: equipment.equipmentNumber,
-              commissioning: equipment.commissioning,
-              is_new: true
-            };
-            newElements.push(equipmentElement);
-          });
-        }
+          const equipmentElement = {
+            wbs_id: generateUniqueWBSId([...existingWBSNodes, ...newElements]),
+            parent_wbs_id: categoryElement.wbs_id,
+            wbs_code: equipmentWBSCode,
+            wbs_short_name: equipmentWBSCode,
+            wbs_name: `${equipment.equipmentNumber} | ${equipment.description || ''}`.trim(),
+            element_type: 'equipment',
+            equipment_number: equipment.equipmentNumber,
+            commissioning: equipment.commissioning,
+            is_new: true
+          };
+          newElements.push(equipmentElement);
+          console.log(`⚙️ Created equipment: "${equipmentElement.wbs_name}" (Code: ${equipmentElement.wbs_short_name})`);
+          equipmentIndex++;
+        });
         
         categoryIndex++;
       }
     });
     
-    // 7. Generate summary
+    // 8. Generate summary
     const summary = {
       prerequisiteEntries: structureAnalysis.prerequisites ? 1 : 0,
       subsystems: 1,
@@ -470,11 +442,13 @@ export const processContinueProjectWBS = (
       subsystemNumber: nextSubsystemNumber,
       zoneCode: zoneCode,
       existingElements: existingWBSNodes.length,
-      newElements: newElements.length
+      newElements: newElements.length,
+      wbsPattern: wbsPattern.isProject5737Pattern ? 'Project 5737 Pattern' : 'Standard Pattern'
     };
     
-    console.log('✅ Integration complete!');
+    console.log('✅ ENHANCED Integration complete!');
     console.log(`📊 Summary: ${summary.totalElements} new elements created`);
+    console.log(`   - Pattern: ${summary.wbsPattern}`);
     console.log(`   - Prerequisites: ${summary.prerequisiteEntries}`);
     console.log(`   - Subsystems: ${summary.subsystems}`);
     console.log(`   - Categories: ${summary.categories}`);
@@ -484,7 +458,8 @@ export const processContinueProjectWBS = (
       success: true,
       newElements,
       summary,
-      structureAnalysis
+      structureAnalysis,
+      wbsPattern
     };
     
   } catch (error) {
