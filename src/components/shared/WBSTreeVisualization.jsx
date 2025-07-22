@@ -1,5 +1,5 @@
-// src/components/shared/WBSTreeVisualization.jsx - FIXED FLAG DETECTION
-// Fixed to properly handle explicit isExisting and isNew flags from ContinueProject.jsx
+// src/components/shared/WBSTreeVisualization.jsx - FIXED to Use XER Hierarchy
+// Instead of rebuilding hierarchy, use parent_wbs_id relationships from XER parser
 
 import React, { useState, useMemo } from 'react';
 import { ChevronRight, ChevronDown, Eye, EyeOff, FileText, Building2, Settings, FolderOpen } from 'lucide-react';
@@ -27,17 +27,16 @@ const WBSTreeVisualization = ({ wbsNodes = [] }) => {
     return String(value);
   };
 
-  // FIXED: Enhanced WBS hierarchy building with better flag detection
-  const buildProperWBSHierarchy = (nodes) => {
-    console.log('🏗️ FIXED: Building WBS hierarchy from', nodes.length, 'nodes');
+  // FIXED: Use parent_wbs_id relationships instead of rebuilding hierarchy
+  const buildHierarchyFromParentIds = (nodes) => {
+    console.log('🏗️ FIXED: Building hierarchy using parent_wbs_id relationships from', nodes.length, 'nodes');
     
     if (!Array.isArray(nodes) || nodes.length === 0) {
       return [];
     }
     
-    // FIXED: Better flag detection using explicit flags from ContinueProject.jsx
+    // FIXED: Better flag detection using explicit flags
     const normalizedNodes = nodes.map(node => {
-      // FIXED: Use explicit flags first, with safer fallbacks
       let isNew = false;
       let isExisting = false;
       
@@ -48,36 +47,34 @@ const WBSTreeVisualization = ({ wbsNodes = [] }) => {
         isExisting = true;
         isNew = false;
       } else {
-        // Fallback: if no explicit flags, treat as existing (likely from XER)
+        // Fallback: treat as existing (likely from XER)
         isExisting = true;
         isNew = false;
       }
       
-      // WBS Code Priority: existing P6 codes first, then generated codes
-      let wbsCode = '';
-      if (node.wbs_short_name && node.wbs_short_name !== '') {
-        wbsCode = safeString(node.wbs_short_name);
-      } else if (node.wbs_code && node.wbs_code !== '') {
-        wbsCode = safeString(node.wbs_code);
-      } else {
-        wbsCode = safeString(node.wbs_id || `temp_${Math.random()}`);
-      }
+      // FIXED: Use wbs_short_name for display (has decimal codes), wbs_id for relationships
+      const wbsCode = safeString(node.wbs_short_name || node.wbs_code || node.wbs_id || `temp_${Math.random()}`);
       
       const normalizedNode = {
         id: safeString(node.wbs_id || node.id || `temp_${Math.random()}`),
         wbsCode: wbsCode,
-        wbsCodeParts: wbsCode.split('.').filter(p => p !== ''),
+        wbsId: safeString(node.wbs_id || ''),
+        parentWbsId: safeString(node.parent_wbs_id || ''),
         name: safeString(node.wbs_name || node.name || 'Unnamed'),
         isNew: isNew,
         isExisting: isExisting,
         elementType: safeString(node.element_type || node.elementType || 'unknown'),
         equipmentNumber: safeString(node.equipment_number || ''),
         commissioning: safeString(node.commissioning || ''),
-        parentWbsId: safeString(node.parent_wbs_id || ''),
         originalNode: node
       };
       
-      normalizedNode.level = normalizedNode.wbsCodeParts.length - 1;
+      // Calculate level from decimal WBS code
+      if (wbsCode.includes('.')) {
+        normalizedNode.level = wbsCode.split('.').length - 1;
+      } else {
+        normalizedNode.level = 0; // Root level
+      }
       
       return normalizedNode;
     });
@@ -85,69 +82,51 @@ const WBSTreeVisualization = ({ wbsNodes = [] }) => {
     console.log('📊 FIXED: Flag Analysis:', {
       total: normalizedNodes.length,
       new: normalizedNodes.filter(n => n.isNew).length,
-      existing: normalizedNodes.filter(n => n.isExisting).length,
-      neither: normalizedNodes.filter(n => !n.isNew && !n.isExisting).length
+      existing: normalizedNodes.filter(n => n.isExisting).length
     });
     
-    // Debug: Show sample flags
-    console.log('🔍 Sample flagging:');
-    normalizedNodes.slice(0, 10).forEach(node => {
-      console.log(`   ${node.wbsCode} | ${node.isNew ? 'NEW' : 'EXISTING'} | ${node.name.substring(0, 40)}`);
-    });
-    
-    // FIXED: Build hierarchy using WBS codes
+    // FIXED: Build hierarchy using parent_wbs_id relationships (like XER parser did)
     const nodeMap = new Map();
-    const childrenByParent = new Map();
+    const childrenByParentId = new Map();
     
-    // First pass - map all nodes
+    // Create lookup maps
     normalizedNodes.forEach(node => {
-      nodeMap.set(node.wbsCode, node);
+      nodeMap.set(node.wbsId, node);
     });
     
-    // Second pass - establish parent-child relationships
+    // Build parent-child relationships using parent_wbs_id
     normalizedNodes.forEach(node => {
-      const parts = node.wbsCodeParts;
+      const parentId = node.parentWbsId;
       
-      if (parts.length === 1) {
+      if (!parentId || parentId === '' || parentId === node.wbsId) {
         // Root node
-        if (!childrenByParent.has('ROOT')) {
-          childrenByParent.set('ROOT', []);
+        if (!childrenByParentId.has('ROOT')) {
+          childrenByParentId.set('ROOT', []);
         }
-        childrenByParent.get('ROOT').push(node);
+        childrenByParentId.get('ROOT').push(node);
       } else {
-        // Find parent by removing last part
-        const parentParts = parts.slice(0, -1);
-        const parentCode = parentParts.join('.');
-        
-        if (!childrenByParent.has(parentCode)) {
-          childrenByParent.set(parentCode, []);
+        // Child node
+        if (!childrenByParentId.has(parentId)) {
+          childrenByParentId.set(parentId, []);
         }
-        childrenByParent.get(parentCode).push(node);
+        childrenByParentId.get(parentId).push(node);
       }
     });
     
-    // Build tree recursively
-    const buildNodeTree = (wbsCode) => {
-      const node = nodeMap.get(wbsCode);
+    console.log(`📊 Parent-child groups: ${childrenByParentId.size}`);
+    console.log(`📊 Root nodes: ${(childrenByParentId.get('ROOT') || []).length}`);
+    
+    // Recursively build tree structure
+    const buildNodeTree = (nodeId) => {
+      const node = nodeMap.get(nodeId);
       if (!node) {
-        console.warn(`❌ Node not found for WBS code: ${wbsCode}`);
         return null;
       }
       
-      const children = childrenByParent.get(wbsCode) || [];
+      const children = childrenByParentId.get(nodeId) || [];
       
-      // Sort children by WBS code naturally
+      // Sort children by WBS code
       const sortedChildren = children.sort((a, b) => {
-        const aLast = a.wbsCodeParts[a.wbsCodeParts.length - 1];
-        const bLast = b.wbsCodeParts[b.wbsCodeParts.length - 1];
-        
-        const aNum = parseInt(aLast);
-        const bNum = parseInt(bLast);
-        
-        if (!isNaN(aNum) && !isNaN(bNum)) {
-          return aNum - bNum;
-        }
-        
         return a.wbsCode.localeCompare(b.wbsCode, undefined, { 
           numeric: true, 
           sensitivity: 'base' 
@@ -156,33 +135,30 @@ const WBSTreeVisualization = ({ wbsNodes = [] }) => {
       
       return {
         ...node,
-        children: sortedChildren.map(child => buildNodeTree(child.wbsCode)).filter(Boolean),
+        children: sortedChildren.map(child => buildNodeTree(child.wbsId)).filter(Boolean),
         hasChildren: sortedChildren.length > 0
       };
     };
     
     // Start from root nodes
-    const rootChildren = childrenByParent.get('ROOT') || [];
-    console.log(`🌲 Found ${rootChildren.length} root nodes`);
+    const rootNodes = childrenByParentId.get('ROOT') || [];
+    console.log(`🌲 FIXED: Building tree from ${rootNodes.length} actual root nodes`);
     
-    const trees = rootChildren.map(root => buildNodeTree(root.wbsCode)).filter(Boolean);
+    const trees = rootNodes.map(root => buildNodeTree(root.wbsId)).filter(Boolean);
     
-    console.log(`✅ FIXED: Hierarchy complete - ${trees.length} trees, showing both NEW and EXISTING elements`);
+    console.log(`✅ FIXED: Hierarchy complete - ${trees.length} root trees built using parent_wbs_id`);
     
     return trees;
   };
 
   // Build tree structure
   const treeData = useMemo(() => {
-    return buildProperWBSHierarchy(wbsNodes);
+    return buildHierarchyFromParentIds(wbsNodes);
   }, [wbsNodes]);
 
-  // FIXED: Better filtering logic
+  // Filtering logic
   const filteredTreeData = useMemo(() => {
-    console.log('🔍 FIXED: Filtering with:', { showOnlyNew, showOnlyExisting });
-    
     if (!showOnlyNew && !showOnlyExisting) {
-      console.log('📊 Showing ALL elements:', treeData.length);
       return treeData;
     }
     
@@ -191,7 +167,6 @@ const WBSTreeVisualization = ({ wbsNodes = [] }) => {
         const shouldShowByFlag = showOnlyNew ? node.isNew : showOnlyExisting ? node.isExisting : true;
         const filteredChildren = filterNodes(node.children || []);
         
-        // Include node if it matches filter OR has children that match
         if (shouldShowByFlag || filteredChildren.length > 0) {
           acc.push({
             ...node,
@@ -203,33 +178,31 @@ const WBSTreeVisualization = ({ wbsNodes = [] }) => {
       }, []);
     };
     
-    const filtered = filterNodes(treeData);
-    console.log(`📊 Filtered to ${filtered.length} root nodes`);
-    return filtered;
+    return filterNodes(treeData);
   }, [treeData, showOnlyNew, showOnlyExisting]);
 
-  const toggleExpanded = (wbsCode) => {
+  const toggleExpanded = (nodeId) => {
     const newExpanded = new Set(expandedNodes);
-    if (newExpanded.has(wbsCode)) {
-      newExpanded.delete(wbsCode);
+    if (newExpanded.has(nodeId)) {
+      newExpanded.delete(nodeId);
     } else {
-      newExpanded.add(wbsCode);
+      newExpanded.add(nodeId);
     }
     setExpandedNodes(newExpanded);
   };
 
   const expandAll = () => {
-    const allCodes = new Set(['root']);
-    const collectCodes = (nodes) => {
+    const allIds = new Set(['root']);
+    const collectIds = (nodes) => {
       nodes.forEach(node => {
         if (node.hasChildren) {
-          allCodes.add(node.wbsCode);
-          collectCodes(node.children);
+          allIds.add(node.wbsId);
+          collectIds(node.children);
         }
       });
     };
-    collectCodes(filteredTreeData);
-    setExpandedNodes(allCodes);
+    collectIds(filteredTreeData);
+    setExpandedNodes(allIds);
   };
 
   const collapseAll = () => {
@@ -243,38 +216,29 @@ const WBSTreeVisualization = ({ wbsNodes = [] }) => {
     
     if (level === 0) return 'project';
     
-    if (level === 1) {
-      if (name.includes('pre-requisite') || name.includes('prerequisite')) return 'prerequisite';
-      if (name.includes('milestone')) return 'milestone';
-      if (name.includes('energisation')) return 'energisation';
-      if (name.match(/^S\d+\s*\|/) || name.includes('subsystem')) return 'subsystem';
-      if (name.includes('tbc') || name.includes('to be confirmed')) return 'tbc';
-      return 'section';
-    }
+    if (name.includes('pre-requisite') || name.includes('prerequisite')) return 'prerequisite';
+    if (name.includes('milestone')) return 'milestone';
+    if (name.includes('energisation')) return 'energisation';
+    if (name.match(/^S\d+\s*\|/) || name.includes('subsystem')) return 'subsystem';
+    if (name.includes('tbc') || name.includes('to be confirmed')) return 'tbc';
     
-    if (level === 2) {
-      if (name.match(/^\d{2}\s*\|/)) return 'category';
-      return 'structure';
-    }
+    if (name.match(/^\d{2}\s*\|/)) return 'category'; // 01 |, 02 |, etc.
     
-    if (level >= 3) {
-      if (name.includes('|')) {
-        const beforePipe = name.split('|')[0].trim();
-        
-        // FIXED: Enhanced equipment patterns
-        if (beforePipe.match(/^[+-]?UH\d+$/i)) return 'panel';
-        if (beforePipe.match(/^-F\d+$/i)) return 'relay';
-        if (beforePipe.match(/^-KF\d+$/i)) return 'relay';
-        if (beforePipe.match(/^-Y\d+$/i)) return 'relay';
-        if (beforePipe.match(/^-P\d+$/i)) return 'relay';
-        if (beforePipe.match(/^[+-]?WA\d+$/i)) return 'hv_switchboard';
-        if (beforePipe.match(/^[+-]?WC\d+$/i)) return 'lv_switchboard';
-        if (beforePipe.match(/^T\d+$/i)) return 'transformer';
-        if (beforePipe.match(/^[+-]?GB\d+$/i)) return 'battery';
-        
-        return 'equipment';
-      }
-      return 'component';
+    if (name.includes('|')) {
+      const beforePipe = name.split('|')[0].trim();
+      
+      // Equipment patterns
+      if (beforePipe.match(/^[+-]?UH\d+$/i)) return 'panel';
+      if (beforePipe.match(/^-F\d+/i)) return 'relay';
+      if (beforePipe.match(/^-KF\d+$/i)) return 'relay';
+      if (beforePipe.match(/^-Y\d+$/i)) return 'relay';
+      if (beforePipe.match(/^-P\d+$/i)) return 'relay';
+      if (beforePipe.match(/^[+-]?WA\d+$/i)) return 'hv_switchboard';
+      if (beforePipe.match(/^[+-]?WC\d+$/i)) return 'lv_switchboard';
+      if (beforePipe.match(/^T\d+$/i)) return 'transformer';
+      if (beforePipe.match(/^[+-]?GB\d+$/i)) return 'battery';
+      
+      return 'equipment';
     }
     
     return 'structure';
@@ -298,7 +262,6 @@ const WBSTreeVisualization = ({ wbsNodes = [] }) => {
       case 'panel':
       case 'relay':
       case 'equipment':
-      case 'component':
         return <Settings {...iconProps} style={{ color: colors.darkGreen }} />;
       case 'category':
         return <FolderOpen {...iconProps} style={{ color: colors.teal }} />;
@@ -307,17 +270,16 @@ const WBSTreeVisualization = ({ wbsNodes = [] }) => {
     }
   };
 
-  // FIXED: Better node styling
+  // Node styling
   const getNodeClasses = (node, nodeType) => {
     let classes = 'flex items-center p-2 rounded border transition-colors ';
     
-    // FIXED: Better color coding for new vs existing
     if (node.isNew) {
       classes += 'bg-green-50 border-green-300 ';
     } else if (node.isExisting) {
       classes += 'bg-blue-50 border-blue-200 ';
     } else {
-      classes += 'bg-gray-50 border-gray-200 '; // fallback
+      classes += 'bg-gray-50 border-gray-200 ';
     }
     
     // Type-specific styling
@@ -344,11 +306,10 @@ const WBSTreeVisualization = ({ wbsNodes = [] }) => {
     return classes;
   };
 
-  // FIXED: Enhanced status badges
+  // Status badges
   const renderStatusBadges = (node, nodeType) => {
     const badges = [];
     
-    // FIXED: Clear status badge based on explicit flags
     if (node.isNew) {
       badges.push(
         <span key="new" className="px-2 py-1 text-xs bg-green-200 text-green-800 rounded font-medium">
@@ -361,15 +322,8 @@ const WBSTreeVisualization = ({ wbsNodes = [] }) => {
           EXISTING
         </span>
       );
-    } else {
-      badges.push(
-        <span key="unknown" className="px-2 py-1 text-xs bg-gray-200 text-gray-800 rounded">
-          UNKNOWN
-        </span>
-      );
     }
     
-    // Type badges
     if (nodeType === 'panel') {
       badges.push(
         <span key="panel" className="px-2 py-1 text-xs bg-yellow-200 text-yellow-800 rounded">
@@ -384,7 +338,6 @@ const WBSTreeVisualization = ({ wbsNodes = [] }) => {
       );
     }
     
-    // Commissioning badge
     if (node.commissioning) {
       badges.push(
         <span key="commissioning" className={`px-2 py-1 text-xs rounded font-medium ${
@@ -403,15 +356,15 @@ const WBSTreeVisualization = ({ wbsNodes = [] }) => {
   // Tree node component
   const TreeNode = ({ node, level = 0 }) => {
     const nodeType = getNodeType(node);
-    const isExpanded = expandedNodes.has(node.wbsCode);
+    const isExpanded = expandedNodes.has(node.wbsId);
     const nodeClasses = getNodeClasses(node, nodeType);
 
     return (
-      <div key={node.wbsCode} className="mb-1">
+      <div key={node.wbsId} className="mb-1">
         <div
           className={nodeClasses}
-          style={{ marginLeft: `${level * 16}px` }}
-          onClick={node.hasChildren ? () => toggleExpanded(node.wbsCode) : undefined}
+          style={{ marginLeft: `${level * 20}px` }}
+          onClick={node.hasChildren ? () => toggleExpanded(node.wbsId) : undefined}
         >
           {getNodeIcon(node, nodeType, isExpanded)}
           
@@ -437,7 +390,7 @@ const WBSTreeVisualization = ({ wbsNodes = [] }) => {
         {node.hasChildren && isExpanded && node.children && (
           <div>
             {node.children.map(child => (
-              <TreeNode key={child.wbsCode} node={child} level={level + 1} />
+              <TreeNode key={child.wbsId} node={child} level={level + 1} />
             ))}
           </div>
         )}
@@ -445,7 +398,7 @@ const WBSTreeVisualization = ({ wbsNodes = [] }) => {
     );
   };
 
-  // FIXED: Better statistics calculation
+  // Calculate statistics
   const stats = useMemo(() => {
     let total = 0;
     let newNodes = 0;
@@ -461,7 +414,7 @@ const WBSTreeVisualization = ({ wbsNodes = [] }) => {
         else if (node.isExisting) existingNodes++;
         
         const nodeType = getNodeType(node);
-        if (nodeType === 'equipment' || nodeType === 'component') equipment++;
+        if (nodeType === 'equipment') equipment++;
         if (nodeType === 'panel') panels++;
         if (nodeType === 'relay') relays++;
         
@@ -541,7 +494,7 @@ const WBSTreeVisualization = ({ wbsNodes = [] }) => {
         </div>
       </div>
 
-      {/* FIXED: Enhanced statistics display */}
+      {/* Statistics display */}
       <div className="grid grid-cols-6 gap-4 mb-6">
         <div className="text-center p-3 bg-gray-50 rounded">
           <div className="text-2xl font-bold text-gray-800">{stats.total}</div>
@@ -573,7 +526,7 @@ const WBSTreeVisualization = ({ wbsNodes = [] }) => {
       <div className="max-h-96 overflow-y-auto border rounded p-4 bg-gray-50">
         {filteredTreeData.length > 0 ? (
           filteredTreeData.map(node => (
-            <TreeNode key={node.wbsCode} node={node} level={0} />
+            <TreeNode key={node.wbsId} node={node} level={0} />
           ))
         ) : (
           <div className="text-center py-8 text-gray-500">
@@ -583,7 +536,7 @@ const WBSTreeVisualization = ({ wbsNodes = [] }) => {
       </div>
 
       <div className="mt-4 text-sm text-gray-600">
-        <strong>FIXED:</strong> 🟦 EXISTING elements from XER • 🟩 NEW equipment integrated • Proper flag detection and hierarchy display
+        <strong>FIXED:</strong> Using parent_wbs_id hierarchy from XER parser • Shows proper nested structure • TBC & Category 99 should now show children
       </div>
     </div>
   );
