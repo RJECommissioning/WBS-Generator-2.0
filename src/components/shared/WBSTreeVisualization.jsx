@@ -1,5 +1,5 @@
-// src/components/shared/WBSTreeVisualization.jsx - COMPLETE FIXED VERSION
-// Incorporates your tree building logic + fixes React Error #130
+// src/components/shared/WBSTreeVisualization.jsx - ENHANCED BADGE SYSTEM
+// Shows both EXISTING (from P6) and NEW (integrated) badges clearly
 
 import React, { useState, useMemo } from 'react';
 import { ChevronRight, ChevronDown, Eye, EyeOff, FileText, Building2, Settings, FolderOpen, Folder } from 'lucide-react';
@@ -7,6 +7,7 @@ import { ChevronRight, ChevronDown, Eye, EyeOff, FileText, Building2, Settings, 
 const WBSTreeVisualization = ({ wbsNodes = [] }) => {
   const [expandedNodes, setExpandedNodes] = useState(new Set());
   const [showOnlyNew, setShowOnlyNew] = useState(false);
+  const [showOnlyExisting, setShowOnlyExisting] = useState(false);
 
   const colors = {
     darkBlue: '#1e3a8a',
@@ -26,7 +27,7 @@ const WBSTreeVisualization = ({ wbsNodes = [] }) => {
     return String(value);
   };
 
-  // ENHANCED: Your tree building logic with object safety
+  // ENHANCED: Build tree structure with object safety
   const buildTreeStructure = (nodes) => {
     console.log('🌲 Building tree structure from', nodes.length, 'nodes');
     
@@ -45,7 +46,9 @@ const WBSTreeVisualization = ({ wbsNodes = [] }) => {
         parentId: safeString(node.parent_wbs_id || node.parent_id || node.parentId || ''),
         name: safeString(node.wbs_name || node.name || node.wbs_short_name || 'Unnamed'),
         shortName: safeString(node.wbs_short_name || node.short_name || node.wbs_code || ''),
+        // ENHANCED: Better detection of new vs existing items
         isNew: Boolean(node.isNew || node.is_new),
+        isExisting: Boolean(node.isExisting || (!node.isNew && !node.is_new)),
         elementType: safeString(node.element_type || node.elementType || 'unknown'),
         equipmentNumber: safeString(node.equipment_number || ''),
         commissioning: safeString(node.commissioning || ''),
@@ -119,6 +122,7 @@ const WBSTreeVisualization = ({ wbsNodes = [] }) => {
         name: '🔗 Orphaned Elements',
         shortName: 'ORPHANED',
         isNew: false,
+        isExisting: true,
         elementType: 'section',
         children: orphanedNodes.map(node => ({
           ...node,
@@ -139,18 +143,13 @@ const WBSTreeVisualization = ({ wbsNodes = [] }) => {
     const parentId = orphanedNode.parentId;
     
     const strategies = [
-      // Match by similar ID pattern
       (nodes) => nodes.find(n => n.id.includes(parentId.substring(0, 4))),
-      
-      // Match by element type hierarchy
       (nodes) => {
         if (orphanedNode.elementType === 'subsystem') {
           return nodes.find(n => n.name && n.name.includes('Summerfield'));
         }
         return null;
       },
-      
-      // Match by name patterns
       (nodes) => {
         const orphanName = orphanedNode.name.toLowerCase();
         if (orphanName.includes('pre-requisite') || orphanName.includes('prerequisite')) {
@@ -173,7 +172,6 @@ const WBSTreeVisualization = ({ wbsNodes = [] }) => {
       }
     }
     
-    // Last resort - attach to first root node
     return allNodes.find(n => !n.parentId);
   };
 
@@ -182,16 +180,16 @@ const WBSTreeVisualization = ({ wbsNodes = [] }) => {
     return buildTreeStructure(wbsNodes);
   }, [wbsNodes]);
 
-  // Filter for new nodes only
+  // ENHANCED: Filter for different view modes
   const filteredTreeData = useMemo(() => {
-    if (!showOnlyNew) return treeData;
+    if (!showOnlyNew && !showOnlyExisting) return treeData;
     
-    const filterNewNodes = (nodes) => {
+    const filterNodes = (nodes) => {
       return nodes.reduce((acc, node) => {
-        const isNodeNew = node.isNew;
-        const filteredChildren = filterNewNodes(node.children || []);
+        const shouldShow = showOnlyNew ? node.isNew : showOnlyExisting ? node.isExisting : true;
+        const filteredChildren = filterNodes(node.children || []);
         
-        if (isNodeNew || filteredChildren.length > 0) {
+        if (shouldShow || filteredChildren.length > 0) {
           acc.push({
             ...node,
             children: filteredChildren
@@ -202,8 +200,8 @@ const WBSTreeVisualization = ({ wbsNodes = [] }) => {
       }, []);
     };
     
-    return filterNewNodes(treeData);
-  }, [treeData, showOnlyNew]);
+    return filterNodes(treeData);
+  }, [treeData, showOnlyNew, showOnlyExisting]);
 
   const toggleExpanded = (nodeId) => {
     const newExpanded = new Set(expandedNodes);
@@ -273,20 +271,29 @@ const WBSTreeVisualization = ({ wbsNodes = [] }) => {
     }
   };
 
-  // Get node styling classes
+  // ENHANCED: Get node styling classes with better new/existing differentiation
   const getNodeClasses = (node, nodeType) => {
     let classes = 'flex items-center p-2 rounded border transition-colors ';
     
+    // ENHANCED: Better background colors for new vs existing
     if (node.isNew) {
-      classes += 'bg-green-50 border-green-200 ';
+      classes += 'bg-green-50 border-green-300 ';
     } else {
-      classes += 'bg-white border-gray-200 ';
+      classes += 'bg-blue-50 border-blue-200 ';
     }
     
     if (nodeType === 'subsystem') {
-      classes += 'bg-blue-50 border-blue-200 text-blue-800 ';
+      if (node.isNew) {
+        classes += 'bg-green-100 border-green-400 text-green-900 ';
+      } else {
+        classes += 'bg-blue-100 border-blue-400 text-blue-900 ';
+      }
     } else if (nodeType === 'category') {
-      classes += 'bg-purple-50 border-purple-200 ';
+      if (node.isNew) {
+        classes += 'bg-purple-50 border-purple-300 ';
+      } else {
+        classes += 'bg-purple-25 border-purple-200 ';
+      }
     } else if (nodeType === 'section') {
       classes += 'bg-yellow-50 border-yellow-300 ';
     }
@@ -298,7 +305,40 @@ const WBSTreeVisualization = ({ wbsNodes = [] }) => {
     return classes;
   };
 
-  // SAFE: Tree node component with object safety
+  // ENHANCED: Badge rendering with both EXISTING and NEW
+  const renderStatusBadges = (node) => {
+    const badges = [];
+    
+    if (node.isNew) {
+      badges.push(
+        <span key="new" className="px-2 py-1 text-xs bg-green-200 text-green-800 rounded font-medium">
+          NEW
+        </span>
+      );
+    } else {
+      badges.push(
+        <span key="existing" className="px-2 py-1 text-xs bg-blue-200 text-blue-800 rounded font-medium">
+          EXISTING
+        </span>
+      );
+    }
+    
+    if (node.commissioning) {
+      badges.push(
+        <span key="commissioning" className={`px-2 py-1 text-xs rounded font-medium ${
+          node.commissioning === 'Y' 
+            ? 'bg-green-100 text-green-700'
+            : 'bg-yellow-100 text-yellow-700'
+        }`}>
+          {safeString(node.commissioning)}
+        </span>
+      );
+    }
+    
+    return badges;
+  };
+
+  // SAFE: Tree node component with enhanced badge system
   const TreeNode = ({ node, level = 0 }) => {
     const nodeType = getNodeType(node);
     const isExpanded = expandedNodes.has(node.id);
@@ -314,27 +354,14 @@ const WBSTreeVisualization = ({ wbsNodes = [] }) => {
           {getNodeIcon(node, nodeType, isExpanded)}
           
           <div className="flex-1">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               {/* SAFE: Always convert to string */}
-              <span className="font-medium text-sm">
+              <span className="font-medium text-sm font-mono">
                 {safeString(node.shortName || node.id)}
               </span>
               
-              {node.isNew && (
-                <span className="px-2 py-1 text-xs bg-green-200 text-green-800 rounded font-medium">
-                  NEW
-                </span>
-              )}
-              
-              {node.commissioning && (
-                <span className={`px-2 py-1 text-xs rounded font-medium ${
-                  node.commissioning === 'Y' 
-                    ? 'bg-green-100 text-green-700'
-                    : 'bg-yellow-100 text-yellow-700'
-                }`}>
-                  {safeString(node.commissioning)}
-                </span>
-              )}
+              {/* ENHANCED: Show both EXISTING and NEW badges */}
+              {renderStatusBadges(node)}
             </div>
             
             {/* SAFE: Always convert to string */}
@@ -360,6 +387,7 @@ const WBSTreeVisualization = ({ wbsNodes = [] }) => {
   const stats = useMemo(() => {
     let total = 0;
     let newNodes = 0;
+    let existingNodes = 0;
     let equipment = 0;
     let categories = 0;
     
@@ -367,6 +395,7 @@ const WBSTreeVisualization = ({ wbsNodes = [] }) => {
       nodes.forEach(node => {
         total++;
         if (node.isNew) newNodes++;
+        if (node.isExisting || !node.isNew) existingNodes++;
         
         const nodeType = getNodeType(node);
         if (nodeType === 'equipment') equipment++;
@@ -378,7 +407,7 @@ const WBSTreeVisualization = ({ wbsNodes = [] }) => {
     
     countNodes(treeData);
     
-    return { total, newNodes, equipment, categories };
+    return { total, newNodes, existingNodes, equipment, categories };
   }, [treeData]);
 
   if (!Array.isArray(wbsNodes) || wbsNodes.length === 0) {
@@ -398,12 +427,15 @@ const WBSTreeVisualization = ({ wbsNodes = [] }) => {
     <div className="bg-white rounded-xl shadow-lg p-6">
       <div className="flex items-center justify-between mb-6">
         <h3 className="text-xl font-bold" style={{ color: colors.darkBlue }}>
-          WBS Structure Visualization ({stats.total} nodes)
+          📊 Combined WBS Structure ({stats.total} nodes)
         </h3>
         
         <div className="flex items-center gap-4">
           <button
-            onClick={() => setShowOnlyNew(!showOnlyNew)}
+            onClick={() => {
+              setShowOnlyNew(!showOnlyNew);
+              setShowOnlyExisting(false);
+            }}
             className={`flex items-center px-3 py-2 rounded text-sm transition-colors ${
               showOnlyNew 
                 ? 'bg-green-100 text-green-700' 
@@ -411,7 +443,22 @@ const WBSTreeVisualization = ({ wbsNodes = [] }) => {
             }`}
           >
             {showOnlyNew ? <Eye className="w-4 h-4 mr-1" /> : <EyeOff className="w-4 h-4 mr-1" />}
-            {showOnlyNew ? 'Show All' : 'Show New Only'}
+            {showOnlyNew ? 'Show All' : 'New Only'}
+          </button>
+
+          <button
+            onClick={() => {
+              setShowOnlyExisting(!showOnlyExisting);
+              setShowOnlyNew(false);
+            }}
+            className={`flex items-center px-3 py-2 rounded text-sm transition-colors ${
+              showOnlyExisting 
+                ? 'bg-blue-100 text-blue-700' 
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            }`}
+          >
+            {showOnlyExisting ? <Eye className="w-4 h-4 mr-1" /> : <EyeOff className="w-4 h-4 mr-1" />}
+            {showOnlyExisting ? 'Show All' : 'Existing Only'}
           </button>
           
           <button
@@ -430,15 +477,19 @@ const WBSTreeVisualization = ({ wbsNodes = [] }) => {
         </div>
       </div>
 
-      {/* Statistics */}
-      <div className="grid grid-cols-4 gap-4 mb-6">
+      {/* ENHANCED: Statistics with existing vs new breakdown */}
+      <div className="grid grid-cols-5 gap-4 mb-6">
+        <div className="text-center p-3 bg-gray-50 rounded">
+          <div className="text-2xl font-bold text-gray-800">{stats.total}</div>
+          <div className="text-sm text-gray-600">Total Nodes</div>
+        </div>
         <div className="text-center p-3 bg-blue-50 rounded">
-          <div className="text-2xl font-bold text-blue-800">{stats.total}</div>
-          <div className="text-sm text-blue-600">Total Nodes</div>
+          <div className="text-2xl font-bold text-blue-800">{stats.existingNodes}</div>
+          <div className="text-sm text-blue-600">Existing (P6)</div>
         </div>
         <div className="text-center p-3 bg-green-50 rounded">
           <div className="text-2xl font-bold text-green-800">{stats.newNodes}</div>
-          <div className="text-sm text-green-600">New Nodes</div>
+          <div className="text-sm text-green-600">New Items</div>
         </div>
         <div className="text-center p-3 bg-purple-50 rounded">
           <div className="text-2xl font-bold text-purple-800">{stats.equipment}</div>
@@ -458,13 +509,13 @@ const WBSTreeVisualization = ({ wbsNodes = [] }) => {
           ))
         ) : (
           <div className="text-center py-8 text-gray-500">
-            {showOnlyNew ? 'No new nodes to display' : 'No nodes to display'}
+            {showOnlyNew ? 'No new nodes to display' : showOnlyExisting ? 'No existing nodes to display' : 'No nodes to display'}
           </div>
         )}
       </div>
 
       <div className="mt-4 text-sm text-gray-600">
-        <strong>Legend:</strong> Blue = Subsystems • Purple = Categories • Green Background = New Items
+        <strong>Legend:</strong> 🔵 EXISTING = From P6 • 🟢 NEW = Just Integrated • Blue Background = P6 Items • Green Background = New Items
       </div>
     </div>
   );
