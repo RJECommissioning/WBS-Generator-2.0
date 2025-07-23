@@ -1,5 +1,6 @@
-// src/components/WBSGenerator.jsx - Complete fix for React error #130
+// src/components/WBSGenerator.jsx - Complete fix for React error #130 + Conditional Visualization
 
+import StartNewProjectVisualization from './shared/StartNewProjectVisualization.jsx';
 import React, { useState, useRef, createContext, useContext } from 'react';
 import { 
   Upload, Download, Settings, Plus, FileText, Zap, ChevronRight, ChevronDown, 
@@ -10,9 +11,6 @@ import {
 import { rjeColors, uploadModes, errorMessages, successMessages } from './utils/constants.js';
 import { processEquipmentFile, processWBSFile, exportWBSToCSV, exportProjectState } from './utils/equipmentUtils.js';
 import { generateWBS, generateMissingEquipmentWBS } from './utils/wbsUtils.js';
-
-// Import the full WBS Tree Visualization component
-import WBSTreeVisualization from './shared/WBSTreeVisualization.jsx';
 
 // SAFETY: Ensure all values are safe for React rendering
 const safeString = (value) => {
@@ -499,12 +497,55 @@ const WBSGenerator = () => {
         />
       )}
 
-      {/* WBS Output */}
+      {/* WBS Output - Conditional Rendering by Mode */}
       {(wbsOutput.length > 0 || wbsVisualization.length > 0) && (
         <div className="space-y-6">
-          <WBSTreeVisualization 
-            wbsNodes={wbsVisualization.length > 0 ? wbsVisualization : wbsOutput} 
-          />
+          
+          {/* StartNewProject Visualization */}
+          {uploadMode === uploadModes.NEW_PROJECT && (
+            <StartNewProjectVisualization 
+              wbsNodes={wbsVisualization.length > 0 ? wbsVisualization : wbsOutput} 
+            />
+          )}
+          
+          {/* Continue Project Visualization - Coming Next */}
+          {uploadMode === uploadModes.CONTINUE_PROJECT && (
+            <div className="bg-white rounded-xl shadow-lg p-6">
+              <h3 className="text-xl font-bold mb-4" style={{ color: rjeColors.darkBlue }}>
+                ➕ Continue Project Visualization (Coming Soon)
+              </h3>
+              <p className="text-gray-600 mb-4">ContinueProjectVisualization component will be created next...</p>
+              
+              {/* Temporary preview of data for debugging */}
+              <div className="p-4 bg-gray-50 rounded-lg">
+                <p className="text-sm text-gray-700">
+                  📊 Debug Info: {wbsVisualization.length} visualization nodes, {wbsOutput.length} output nodes
+                </p>
+                {projectState && (
+                  <p className="text-sm text-gray-700 mt-2">
+                    📋 Project: {safeString(projectState.projectName)} ({safeString(projectState.totalElements)} elements)
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+          
+          {/* Missing Equipment Visualization - Coming Next */}
+          {uploadMode === uploadModes.MISSING_EQUIPMENT && (
+            <div className="bg-white rounded-xl shadow-lg p-6">
+              <h3 className="text-xl font-bold mb-4" style={{ color: rjeColors.darkBlue }}>
+                🔧 Missing Equipment Visualization (Coming Soon)
+              </h3>
+              <p className="text-gray-600 mb-4">MissingEquipmentVisualization component will be created next...</p>
+              
+              {/* Temporary preview of analysis data */}
+              <div className="p-4 bg-gray-50 rounded-lg">
+                <p className="text-sm text-gray-700">
+                  📊 Analysis: {safeString(missingEquipmentAnalysis.newEquipment.length)} new, {safeString(missingEquipmentAnalysis.existingEquipment.length)} existing, {safeString(missingEquipmentAnalysis.removedEquipment.length)} removed
+                </p>
+              </div>
+            </div>
+          )}
           
           <ExportPanel
             uploadMode={uploadMode}
