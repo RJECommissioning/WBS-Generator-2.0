@@ -11,7 +11,7 @@ import {
   ControlButtons,
   StatsDisplay,
   buildStandardHierarchy
-} from './WBSVisualizationUtils.js';
+} from './WBSVisualizationUtils.jsx';
 
 const StartNewProjectVisualization = ({ wbsNodes = [] }) => {
   const [expandedNodes, setExpandedNodes] = useState(new Set(['root']));
