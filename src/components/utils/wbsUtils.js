@@ -396,19 +396,21 @@ export const findNextWBSCode = (parentWbsCode, existingNodes) => {
 };
 
 // ENHANCED: Generate WBS structure with proper categorization
+// FIXED: Generate WBS structure with proper categorization
+
 export const generateModernStructure = (structure, parentCode, subsystemName, subsystemData) => {
   console.log(`🏗️ Generating structure for subsystem: ${subsystemName}`);
   
   // Group equipment by category
   const categoryGroups = processEquipmentByCategory(subsystemData, subsystemData);
   
-  // Create category nodes in the correct order
+  // Create category nodes using the ACTUAL category numbers (not sequential counter)
   const orderedCategoryKeys = ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '99'];
-  let categoryCounter = 1;
   
   orderedCategoryKeys.forEach(categoryKey => {
     if (categoryGroups[categoryKey] && categoryGroups[categoryKey].length > 0) {
-      const categoryId = `${parentCode}.${categoryCounter.toString().padStart(2, '0')}`;
+      // FIXED: Use the actual category number in WBS code (convert to integer to remove leading zero)
+      const categoryId = `${parentCode}.${parseInt(categoryKey)}`; // 01 → 1, 02 → 2, 05 → 5, 99 → 99
       const categoryName = categoryMapping[categoryKey];
       
       // Add category node
@@ -427,8 +429,6 @@ export const generateModernStructure = (structure, parentCode, subsystemName, su
           wbs_name: `${equipment.equipmentNumber} | ${equipment.description}`
         });
       });
-      
-      categoryCounter++;
     }
   });
   
