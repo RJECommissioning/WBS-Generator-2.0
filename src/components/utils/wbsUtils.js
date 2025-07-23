@@ -410,7 +410,7 @@ export const generateModernStructure = (structure, parentCode, subsystemName, su
   orderedCategoryKeys.forEach(categoryKey => {
     if (categoryGroups[categoryKey] && categoryGroups[categoryKey].length > 0) {
       // FIXED: Use the actual category number in WBS code (convert to integer to remove leading zero)
-      const categoryId = `${parentCode}.${parseInt(categoryKey)}`; // 01 → 1, 02 → 2, 05 → 5, 99 → 99
+     const categoryId = `${parentCode}.${parseInt(categoryKey)}`;
       const categoryName = categoryMapping[categoryKey];
       
       // Add category node
