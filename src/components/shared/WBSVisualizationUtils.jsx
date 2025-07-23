@@ -1,4 +1,4 @@
-// src/components/shared/WBSVisualizationUtils.js - Shared utilities for WBS visualization components
+// src/components/shared/WBSVisualizationUtils.jsx - Shared utilities for WBS visualization components
 
 import React from 'react';
 import { 
